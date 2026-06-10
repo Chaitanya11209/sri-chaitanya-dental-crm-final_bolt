@@ -162,30 +162,40 @@ Patient submitted appointment request from the official website.
 
 Please contact the patient to confirm the appointment.`;
 
-  // 3. Open WhatsApp
+  // 3. Open WhatsApp - clinic number from environment
+  const clinicWhatsApp = import.meta.env.VITE_CLINIC_WHATSAPP || '918277090710';
   window.open(
-    `https://wa.me/918277090710?text=${encodeURIComponent(whatsappMessage)}`,
+    `https://wa.me/${clinicWhatsApp}?text=${encodeURIComponent(whatsappMessage)}`,
     '_blank'
   );
 
-  // 4. EmailJS (optional)
-  try {
-    await emailjs.send(
-      'service_c4b7i3o',
-      'template_39o7jsh',
-      {
-        user_name: formData.name,
-        user_phone: formData.phone,
-        user_email: formData.email,
-        service: formData.service,
-        message: formData.message,
-        date: formData.date,
-        time: formData.time,
-      },
-      'LEVcKGAOwVogIq0Ob'
-    );
-  } catch (emailError) {
-    console.error('EmailJS Error:', emailError);
+  // 4. EmailJS (optional - requires environment configuration)
+  const emailjsServiceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+  const emailjsTemplateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+  const emailjsPublicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+  if (emailjsServiceId && emailjsTemplateId && emailjsPublicKey) {
+    try {
+      await emailjs.send(
+        emailjsServiceId,
+        emailjsTemplateId,
+        {
+          user_name: formData.name,
+          user_phone: formData.phone,
+          user_email: formData.email,
+          service: formData.service,
+          message: formData.message,
+          date: formData.date,
+          time: formData.time,
+        },
+        emailjsPublicKey
+      );
+    } catch (emailError) {
+      // Silent fail - EmailJS is optional
+      if (import.meta.env.DEV) {
+        console.warn('EmailJS Error (optional):', emailError);
+      }
+    }
   }
 
   // 5. Success UI

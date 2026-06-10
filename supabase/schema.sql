@@ -57,6 +57,11 @@ create table if not exists doctors (
   created_at       timestamptz default now()
 );
 
+-- Add FK constraint for appointments.doctor_id
+ALTER TABLE appointments DROP CONSTRAINT IF EXISTS fk_appointments_doctor;
+ALTER TABLE appointments ADD CONSTRAINT fk_appointments_doctor
+  FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE SET NULL;
+
 -- ── TREATMENTS ───────────────────────────────────────────────
 create table if not exists treatments (
   id                 bigserial primary key,
@@ -78,7 +83,7 @@ create table if not exists treatments (
 -- ── STAFF ROLES (for Supabase Auth) ──────────────────────────
 create table if not exists staff_roles (
   user_id    uuid primary key references auth.users(id) on delete cascade,
-  role       text not null default 'staff' check (role in ('admin', 'staff')),
+  role       text not null default 'staff' check (role in ('admin', 'doctor', 'receptionist', 'assistant', 'staff')),
   name       text not null,
   status     text default 'Active' check (status in ('Active', 'Inactive')),
   updated_at timestamptz default now(),
@@ -137,18 +142,14 @@ drop policy if exists "authenticated full access - patients"     on patients;
 drop policy if exists "authenticated full access - appointments" on appointments;
 drop policy if exists "authenticated full access - treatments"   on treatments;
 
--- Public and Anon access (Website functionality)
-create policy "anon full access - patients"
-  on patients for all to anon using (true) with check (true);
+-- Public and Anon access (SECURITY: Restricted to minimum necessary)
+-- Anon can ONLY insert appointments (for public booking form)
+create policy "anon_insert_appointments_only"
+  on appointments for insert to anon with check (true);
 
-create policy "anon full access - appointments"
-  on appointments for all to anon using (true) with check (true);
-
-create policy "anon full access - treatments"
-  on treatments for all to anon using (true) with check (true);
-
-create policy "anon full access - doctors"
-  on doctors for all to anon using (true) with check (true);
+-- Anon can read active doctors for public display
+create policy "anon_read_doctors_public"
+  on doctors for select to anon using (status = 'Active');
 
 -- Authenticated CRM staff/admin access (Fixes 0 Patients dashboard / pages issue)
 create policy "authenticated full access - patients"
@@ -163,16 +164,30 @@ create policy "authenticated full access - treatments"
 create policy "authenticated full access - doctors"
   on doctors for all to authenticated using (true) with check (true);
 
--- Staff roles policies
-create policy "auth users read staff_roles"
-  on staff_roles for select to authenticated using (true);
+-- Staff roles policies - secure access control
+-- Users can read their own role
+create policy "staff_roles_read_own"
+  on staff_roles for select to authenticated
+  using (user_id = auth.uid());
+
+-- Admins can read all staff_roles
+create policy "staff_roles_admin_read_all"
+  on staff_roles for select to authenticated
+  using (
+    exists (
+      select 1 from staff_roles sr
+      where sr.user_id = auth.uid() and sr.role = 'admin'
+      and (sr.status = 'Active' or sr.status is null)
+    )
+  );
 
 create policy "auth users insert staff_roles"
   ON staff_roles FOR INSERT TO authenticated
   WITH CHECK (
     exists (
       select 1 from staff_roles sr
-      where sr.user_id = auth.uid() and sr.role = 'admin' and sr.status = 'Active'
+      where sr.user_id = auth.uid() and sr.role = 'admin'
+      and (sr.status = 'Active' or sr.status is null)
     )
     or not exists (select 1 from staff_roles)
   );
@@ -182,7 +197,8 @@ create policy "auth users update staff_roles"
   USING (
     exists (
       select 1 from staff_roles sr
-      where sr.user_id = auth.uid() and sr.role = 'admin' and sr.status = 'Active'
+      where sr.user_id = auth.uid() and sr.role = 'admin'
+      and (sr.status = 'Active' or sr.status is null)
     )
   );
 

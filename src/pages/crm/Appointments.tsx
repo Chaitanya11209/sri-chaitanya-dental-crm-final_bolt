@@ -18,16 +18,11 @@ const TREATMENTS = [
 ];
 
 const FALLBACK_DOCTORS = [
-  { id: 1, name: 'Dr. Bolla Chaitanya', phone: '918317575165', qualification: 'BDS, MDS', specialization: 'Chief Implantologist Roster' },
-  { id: 2, name: 'Dr. A. K. Verma', phone: '919988776655', qualification: 'BDS', specialization: 'Consultant Surgeon' }
+  { id: 1, name: 'Dr. Sample Doctor', phone: '91XXXXXXXXXX', qualification: 'BDS, MDS', specialization: 'Chief Dental Surgeon' },
+  { id: 2, name: 'Dr. Sample Associate', phone: '91XXXXXXXXXX', qualification: 'BDS', specialization: 'General Dentistry' }
 ];
 
-const WAITING_LIST_QUEUE = [
-  { id: 'w1', name: 'Karan Malhotra', phone: '9865412354', treatment: 'Tooth Extraction', preferred_time: 'Evening' },
-  { id: 'w2', name: 'Sonia Sharma', phone: '9432109875', treatment: 'Root Canal', preferred_time: 'Morning' },
-  { id: 'w3', name: 'Rahul Jain', phone: '9123456789', treatment: 'Scaling & Polishing', preferred_time: 'Afternoon' },
-  { id: 'w4', name: 'Priya Patel', phone: '9567890123', treatment: 'Dental Implants', preferred_time: 'Anytime' }
-];
+const WAITING_LIST_QUEUE: any[] = [];
 
 export default function Appointments() {
   const admin = isAdmin();

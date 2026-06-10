@@ -10,20 +10,20 @@ import {
 const FALLBACK_DOCTORS = [
   {
     id: 1,
-    name: 'Dr. Bolla Chaitanya',
+    name: 'Dr. Sample Doctor',
     qualification: 'BDS, MDS',
-    specialization: 'Chief Implantologist & Prosthodontist',
-    phone: '+91 8317575165',
-    email: 'chaitubolla09@gmail.com',
+    specialization: 'Chief Dental Surgeon',
+    phone: '+91 XXXXXXXXXX',
+    email: 'doctor@clinic.com',
     status: 'Active'
   },
   {
     id: 2,
-    name: 'Dr. A. K. Verma',
+    name: 'Dr. Sample Associate',
     qualification: 'BDS',
-    specialization: 'General Dental Surgeon',
-    phone: '+91 9988776655',
-    email: 'verma.dental@gmail.com',
+    specialization: 'General Dentistry',
+    phone: '+91 XXXXXXXXXX',
+    email: 'associate@clinic.com',
     status: 'Active'
   }
 ];

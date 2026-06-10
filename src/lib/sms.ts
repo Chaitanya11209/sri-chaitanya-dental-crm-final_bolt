@@ -66,7 +66,10 @@ export async function sendSMS({ phone, name, message }: SendSMSParams): Promise<
 
   const activeChannel = getSMSChannel();
 
-  console.log(`[SMS SYSTEM] Dispatching Message via [${activeChannel.toUpperCase()}] to ${name} (${formattedPhone}). Content: "${message}"`);
+  // Log only in development mode, and never log full message content or phone numbers
+  if (import.meta.env.DEV) {
+    console.log(`[SMS] Dispatching via ${activeChannel.toUpperCase()} to recipient`);
+  }
 
   // --- FREE ROUTING OPTIONS ---
 
