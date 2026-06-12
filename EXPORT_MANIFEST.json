@@ -61,8 +61,8 @@
   },
   {
     "full path": "EXPORT_MANIFEST.json",
-    "file size": 21389,
-    "modified timestamp": "2026-06-12T14:59:19.186Z"
+    "file size": 22816,
+    "modified timestamp": "2026-06-12T15:27:12.899Z"
   },
   {
     "full path": "index.html",
@@ -606,8 +606,8 @@
   },
   {
     "full path": "src/main.tsx",
-    "file size": 3491,
-    "modified timestamp": "2026-06-12T14:58:25.536Z"
+    "file size": 3608,
+    "modified timestamp": "2026-06-12T15:27:03.499Z"
   },
   {
     "full path": "src/pages/AdminLogin.tsx",
@@ -621,8 +621,8 @@
   },
   {
     "full path": "src/pages/crm/Appointments.tsx",
-    "file size": 46253,
-    "modified timestamp": "2026-06-12T14:58:25.536Z"
+    "file size": 65647,
+    "modified timestamp": "2026-06-12T15:27:03.608Z"
   },
   {
     "full path": "src/pages/crm/Billing.tsx",
@@ -636,8 +636,8 @@
   },
   {
     "full path": "src/pages/crm/CRMLayout.tsx",
-    "file size": 41044,
-    "modified timestamp": "2026-06-12T14:58:25.536Z"
+    "file size": 41205,
+    "modified timestamp": "2026-06-12T15:27:03.542Z"
   },
   {
     "full path": "src/pages/crm/Dashboard.tsx",
@@ -663,6 +663,11 @@
     "full path": "src/pages/crm/Patients.tsx",
     "file size": 214807,
     "modified timestamp": "2026-06-12T14:58:25.537Z"
+  },
+  {
+    "full path": "src/pages/crm/Permissions.tsx",
+    "file size": 20816,
+    "modified timestamp": "2026-06-12T15:27:03.268Z"
   },
   {
     "full path": "src/pages/crm/Reports.tsx",
@@ -773,6 +778,41 @@
     "full path": "supabase/migrations/20260610044100_20260610150000_security_rls_fix.sql",
     "file size": 3157,
     "modified timestamp": "2026-06-12T14:58:25.538Z"
+  },
+  {
+    "full path": "supabase/migrations/20260612150220_20260612160000_dynamic_permission_matrix.sql",
+    "file size": 3944,
+    "modified timestamp": "2026-06-12T15:27:03.300Z"
+  },
+  {
+    "full path": "supabase/migrations/20260612150641_20260612163000_enhanced_patient_profile.sql",
+    "file size": 2430,
+    "modified timestamp": "2026-06-12T15:27:03.325Z"
+  },
+  {
+    "full path": "supabase/migrations/20260612150914_20260612170000_appointment_intelligence.sql",
+    "file size": 14200,
+    "modified timestamp": "2026-06-12T15:27:03.347Z"
+  },
+  {
+    "full path": "supabase/migrations/20260612151907_20260612174000_dental_infrastructure_fix.sql",
+    "file size": 9912,
+    "modified timestamp": "2026-06-12T15:27:03.376Z"
+  },
+  {
+    "full path": "supabase/migrations/20260612151950_20260612175000_clinical_treatment_workflow.sql",
+    "file size": 11928,
+    "modified timestamp": "2026-06-12T15:27:03.411Z"
+  },
+  {
+    "full path": "supabase/migrations/20260612152047_20260612180000_billing_financials_upgrade.sql",
+    "file size": 14158,
+    "modified timestamp": "2026-06-12T15:27:03.436Z"
+  },
+  {
+    "full path": "supabase/migrations/20260612152348_20260612181000_reporting_system.sql",
+    "file size": 12254,
+    "modified timestamp": "2026-06-12T15:27:03.467Z"
   },
   {
     "full path": "supabase/policies/policies.sql",

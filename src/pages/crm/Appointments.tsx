@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { isAdmin } from '../../lib/auth';
-import { 
-  Plus, Search, X, Phone, Clock, Calendar, CheckSquare, 
-  Send, CheckCircle2, AlertCircle, MessageSquare, Edit2, Trash2, HeartPulse, ShieldAlert 
+import {
+  Plus, Search, X, Phone, Clock, Calendar, CheckSquare,
+  Send, CheckCircle2, AlertCircle, MessageSquare, Edit2, Trash2, HeartPulse, ShieldAlert,
+  AlertTriangle, Users, Armchair, Timer, UserPlus
 } from 'lucide-react';
 import { sendSMS, getSMSTemplates } from '../../lib/sms';
 import { useNotification } from '../../components/NotificationProvider';
@@ -11,33 +12,40 @@ import { notifyAppointmentBooked } from '../../lib/email';
 import { sendWhatsAppNotification } from '../../lib/whatsapp';
 
 const STATUS_OPTIONS = ['Pending', 'Confirmed', 'Completed', 'Cancelled', 'No Show'];
+const APPOINTMENT_TYPES = ['Scheduled', 'Walk-in', 'Emergency', 'Follow-up'];
 const TREATMENTS = [
-  'Consultation', 'OP', 'Composite Fillings', 'Scaling', 'RCT', 
-  'RCT Post Endodontic Restoration', 'Crown', 'Extraction', 
+  'Consultation', 'OP', 'Composite Fillings', 'Scaling', 'RCT',
+  'RCT Post Endodontic Restoration', 'Crown', 'Extraction',
   'Surgical Extraction', 'Denture', 'Implant', 'Disposables', 'Other'
 ];
+const DURATION_OPTIONS = [15, 20, 30, 45, 60, 90, 120];
 
 const FALLBACK_DOCTORS = [
   { id: 1, name: 'Dr. Sample Doctor', phone: '91XXXXXXXXXX', qualification: 'BDS, MDS', specialization: 'Chief Dental Surgeon' },
   { id: 2, name: 'Dr. Sample Associate', phone: '91XXXXXXXXXX', qualification: 'BDS', specialization: 'General Dentistry' }
 ];
 
-const WAITING_LIST_QUEUE: any[] = [];
-
 export default function Appointments() {
   const admin = isAdmin();
   const { notify } = useNotification();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [doctors, setDoctors] = useState<any[]>([]);
+  const [chairs, setChairs] = useState<any[]>([]);
+  const [walkInQueue, setWalkInQueue] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [dateFilter, setDateFilter] = useState('');
-  
+
   // Modals
   const [showModal, setShowModal] = useState(false);
   const [editingAppt, setEditingAppt] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showWalkInModal, setShowWalkInModal] = useState(false);
+
+  // Conflict detection
+  const [conflictWarning, setConflictWarning] = useState<any>(null);
+  const [isCheckingConflict, setIsCheckingConflict] = useState(false);
 
   // States for checkbox-based bulk sending
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -50,6 +58,16 @@ export default function Appointments() {
 
   // Waiting list vacancy reallocation state
   const [vacantSlotNotification, setVacantSlotNotification] = useState<any>(null);
+
+  // Walk-in queue form
+  const [walkInForm, setWalkInForm] = useState({
+    name: '',
+    phone: '',
+    treatment: '',
+    preferred_doctor_id: '',
+    priority: 5,
+    notes: ''
+  });
 
   // Default Form values
   const [form, setForm] = useState({
@@ -64,13 +82,18 @@ export default function Appointments() {
     amount_paid: '',
     balance_amount: '',
     doctor_id: '',
-    doctor_name: ''
+    doctor_name: '',
+    chair_id: '',
+    duration_minutes: 30,
+    appointment_type: 'Scheduled'
   });
 
   useEffect(() => {
     fetch();
     fetchActiveDoctors();
- 
+    fetchChairs();
+    fetchWalkInQueue();
+
     const channelAppts = supabase
       .channel('appointments-realtime')
       .on(
@@ -92,10 +115,22 @@ export default function Appointments() {
         }
       )
       .subscribe();
- 
+
+    const channelWalkIn = supabase
+      .channel('walk-in-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'walk_in_queue' },
+        () => {
+          fetchWalkInQueue();
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channelAppts);
       supabase.removeChannel(channelPatients);
+      supabase.removeChannel(channelWalkIn);
     };
   }, []);
 
@@ -115,16 +150,99 @@ export default function Appointments() {
     }
   };
 
+  const fetchChairs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('dental_chairs')
+        .select('*')
+        .eq('status', 'Active')
+        .order('chair_number', { ascending: true });
+
+      if (error) throw error;
+      setChairs(data || []);
+    } catch (e) {
+      console.warn("Chairs table not available");
+      setChairs([]);
+    }
+  };
+
+  const fetchWalkInQueue = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('walk_in_queue')
+        .select(`
+          *,
+          preferred_doctor:doctors(id, name)
+        `)
+        .in('status', ['Waiting', 'In Progress'])
+        .order('priority', { ascending: false })
+        .order('check_in_time', { ascending: true });
+
+      if (error) throw error;
+      setWalkInQueue(data || []);
+    } catch (e) {
+      console.warn("Walk-in queue not available");
+      setWalkInQueue([]);
+    }
+  };
+
   const fetch = async () => {
     setLoading(true);
     const { data } = await supabase
       .from('appointments')
-      .select('*')
+      .select(`
+        *,
+        chair:dental_chairs(id, name, chair_number)
+      `)
       .neq('status', 'Deleted')
       .order('created_at', { ascending: false });
     setAppointments(data || []);
     setLoading(false);
   };
+
+  // Conflict detection function
+  const checkConflict = async () => {
+    if (!form.doctor_id || !form.next_visit || !form.appointment_time) {
+      setConflictWarning(null);
+      return;
+    }
+
+    setIsCheckingConflict(true);
+    try {
+      const { data, error } = await supabase.rpc('check_appointment_conflict', {
+        p_doctor_id: parseInt(form.doctor_id),
+        p_chair_id: form.chair_id ? parseInt(form.chair_id) : null,
+        p_appointment_date: form.next_visit,
+        p_start_time: form.appointment_time + ':00',
+        p_duration_minutes: form.duration_minutes || 30,
+        p_exclude_appointment_id: editingAppt?.id || null
+      });
+
+      if (error) throw error;
+
+      if (data && data.has_conflict) {
+        setConflictWarning({
+          type: data.conflict_type,
+          details: data.conflict_details
+        });
+      } else {
+        setConflictWarning(null);
+      }
+    } catch (e) {
+      console.warn('Conflict check failed:', e);
+      setConflictWarning(null);
+    } finally {
+      setIsCheckingConflict(false);
+    }
+  };
+
+  // Check conflict when relevant fields change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkConflict();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [form.doctor_id, form.next_visit, form.appointment_time, form.chair_id, form.duration_minutes]);
 
   const updateStatus = async (id: number, status: string) => {
     await supabase.from('appointments').update({ status }).eq('id', id);
@@ -243,6 +361,7 @@ export default function Appointments() {
 
   const handleOpenBookModal = () => {
     setEditingAppt(null);
+    setConflictWarning(null);
     setForm({
       name: '',
       phone: '',
@@ -255,13 +374,17 @@ export default function Appointments() {
       amount_paid: '',
       balance_amount: '',
       doctor_id: doctors[0]?.id?.toString() || '1',
-      doctor_name: doctors[0]?.name || 'Dr. Bolla Chaitanya'
+      doctor_name: doctors[0]?.name || 'Dr. Bolla Chaitanya',
+      chair_id: chairs[0]?.id?.toString() || '',
+      duration_minutes: 30,
+      appointment_type: 'Scheduled'
     });
     setShowModal(true);
   };
 
   const handleOpenEditModal = (a: any) => {
     setEditingAppt(a);
+    setConflictWarning(null);
     setForm({
       name: a.name || '',
       phone: a.phone || '',
@@ -274,9 +397,80 @@ export default function Appointments() {
       amount_paid: a.amount_paid?.toString() || '',
       balance_amount: a.balance_amount?.toString() || '',
       doctor_id: a.doctor_id?.toString() || doctors[0]?.id?.toString() || '1',
-      doctor_name: a.doctor_name || doctors[0]?.name || 'Dr. Bolla Chaitanya'
+      doctor_name: a.doctor_name || doctors[0]?.name || 'Dr. Bolla Chaitanya',
+      chair_id: a.chair_id?.toString() || '',
+      duration_minutes: a.duration_minutes || 30,
+      appointment_type: a.appointment_type || 'Scheduled'
     });
     setShowModal(true);
+  };
+
+  const handleWalkInCheckIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!walkInForm.name || !walkInForm.phone) {
+      notify('error', 'Missing Fields', 'Please provide name and phone.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('walk_in_queue').insert([{
+        name: walkInForm.name,
+        phone: walkInForm.phone,
+        treatment: walkInForm.treatment,
+        preferred_doctor_id: walkInForm.preferred_doctor_id || null,
+        priority: walkInForm.priority,
+        notes: walkInForm.notes,
+        status: 'Waiting'
+      }]);
+
+      if (error) throw error;
+      notify('success', 'Walk-in Registered', `${walkInForm.name} added to queue.`);
+      setWalkInForm({ name: '', phone: '', treatment: '', preferred_doctor_id: '', priority: 5, notes: '' });
+      setShowWalkInModal(false);
+      fetchWalkInQueue();
+    } catch (err: any) {
+      notify('error', 'Error', err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConvertWalkIn = async (walkIn: any, slotDate: string, slotTime: string, chairId?: number) => {
+    const selectedDoc = doctors.find(d => d.id.toString() === walkIn.preferred_doctor_id?.toString()) || doctors[0];
+
+    const { data: appt, error } = await supabase.from('appointments').insert([{
+      name: walkIn.name,
+      phone: walkIn.phone,
+      treatment: walkIn.treatment || 'Consultation',
+      next_visit: slotDate,
+      appointment_time: slotTime,
+      doctor_id: selectedDoc?.id,
+      doctor_name: selectedDoc?.name,
+      chair_id: chairId || null,
+      appointment_type: 'Walk-in',
+      status: 'Confirmed',
+      patient_id: null
+    }]).select();
+
+    if (error) {
+      notify('error', 'Conversion Error', error.message);
+      return;
+    }
+
+    // Update walk-in status
+    await supabase.from('walk_in_queue')
+      .update({ status: 'Converted', converted_appointment_id: appt?.[0]?.id })
+      .eq('id', walkIn.id);
+
+    notify('success', 'Converted', 'Walk-in converted to appointment.');
+    fetchWalkInQueue();
+    fetch();
+  };
+
+  const handleUpdateWalkInStatus = async (id: number, status: string) => {
+    await supabase.from('walk_in_queue').update({ status }).eq('id', id);
+    fetchWalkInQueue();
   };
 
   const save = async (e: React.FormEvent) => {
@@ -286,10 +480,25 @@ export default function Appointments() {
       return;
     }
 
+    // Warn about conflicts but allow override
+    if (conflictWarning) {
+      const conflictMessages: Record<string, string> = {
+        'doctor_double_booked': 'Doctor is already booked at this time.',
+        'chair_double_booked': 'Chair is already booked at this time.',
+        'doctor_on_leave': 'Doctor has approved leave during this time.',
+        'outside_schedule_hours': 'Time is outside doctor working hours.',
+        'break_time': 'Time overlaps with doctor break.',
+        'doctor_unavailable': 'Doctor is marked unavailable for this day.',
+        'doctor_no_schedule': 'Doctor does not have a schedule for this day.'
+      };
+      const proceed = window.confirm(
+        `WARNING: ${conflictMessages[conflictWarning.type] || 'Scheduling conflict detected.'}\n\nDo you want to proceed anyway?`
+      );
+      if (!proceed) return;
+    }
+
     setSaving(true);
     try {
-      // ── APPOINTMENT TO PATIENT SYNCHRONIZATION ENGINE ──
-      // Search matching patient record via highly resilient clean mobile digit comparison
       const cleanPhoneInput = form.phone.replace(/\D/g, '');
       const last10 = cleanPhoneInput.slice(-10);
 
@@ -309,10 +518,9 @@ export default function Appointments() {
         matchedPatientId = matchedByEmail?.[0]?.id;
       }
 
-      // Look up assigned doctor textual details
-      const selectedDocObj = doctors.find(d => d.id.toString() === form.doctor_id.toString()) || 
+      const selectedDocObj = doctors.find(d => d.id.toString() === form.doctor_id.toString()) ||
                               doctors[0] || FALLBACK_DOCTORS[0];
-      
+
       const payload: any = {
         name: form.name.trim(),
         phone: form.phone.trim(),
@@ -326,11 +534,13 @@ export default function Appointments() {
         balance_amount: form.balance_amount === '' ? 0 : Number(form.balance_amount),
         doctor_id: selectedDocObj.id,
         doctor_name: selectedDocObj.name,
-        patient_id: matchedPatientId || null // The DB Trigger will auto-create patient if null
+        patient_id: matchedPatientId || null,
+        chair_id: form.chair_id ? parseInt(form.chair_id) : null,
+        duration_minutes: form.duration_minutes || 30,
+        appointment_type: form.appointment_type || 'Scheduled'
       };
 
       if (editingAppt) {
-        // Update
         const { error } = await supabase
           .from('appointments')
           .update(payload)
@@ -339,7 +549,6 @@ export default function Appointments() {
         if (error) throw error;
         notify('success', 'Roster Rescheduled', `Successfully rescheduled and updated Dr. ${selectedDocObj.name} consulting hours.`);
       } else {
-        // Insert
         const { error } = await supabase
           .from('appointments')
           .insert([payload]);
@@ -355,7 +564,6 @@ export default function Appointments() {
         notify('success', 'Appointment Set', `Successfully scheduled appointment with Dr. ${selectedDocObj.name}`);
       }
 
-      // Prepare WhatsApp Notification engine double payload
       setSavedWhatsAppAlerts({
         patientName: form.name,
         patientPhone: form.phone,
@@ -367,7 +575,6 @@ export default function Appointments() {
         status: editingAppt ? 'Rescheduled' : 'Scheduled'
       });
 
-      // Dispatch clinic alert email
       notifyAppointmentBooked({
         name: form.name,
         phone: form.phone,
@@ -472,11 +679,63 @@ export default function Appointments() {
         </select>
         <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
           className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+        <button onClick={() => setShowWalkInModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold shadow-sm transition whitespace-nowrap cursor-pointer">
+          <UserPlus size={16} /> Walk-In
+        </button>
         <button onClick={handleOpenBookModal}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold shadow-sm transition whitespace-nowrap cursor-pointer">
           <Plus size={16} /> Book Appointment
         </button>
       </div>
+
+      {/* Walk-In Queue */}
+      {walkInQueue.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-amber-600" />
+              <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">Walk-In Queue ({walkInQueue.length})</h4>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {walkInQueue.slice(0, 6).map((w: any) => (
+              <div key={w.id} className="bg-white/80 p-3 rounded-xl border border-amber-200/60">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-bold text-slate-800 text-sm">{w.name}</p>
+                    <p className="text-[10px] text-slate-500">{w.treatment || 'General'} - {w.phone}</p>
+                    {w.preferred_doctor && (
+                      <p className="text-[10px] text-teal-600">Dr: {w.preferred_doctor.name}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => {
+                        const today = new Date().toISOString().split('T')[0];
+                        handleConvertWalkIn(w, today, '10:00');
+                      }}
+                      className="px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded text-[10px] font-bold cursor-pointer">
+                      Assign
+                    </button>
+                    <button
+                      onClick={() => handleUpdateWalkInStatus(w.id, 'Completed')}
+                      className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded text-[10px] font-bold cursor-pointer">
+                      Done
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <Timer size={10} className="text-slate-400" />
+                  <span className="text-[10px] text-slate-400">
+                    {Math.floor((Date.now() - new Date(w.check_in_time).getTime()) / 60000)} min wait
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {vacantSlotNotification && (
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl p-5 shadow-sm space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -496,11 +755,11 @@ export default function Appointments() {
             A slot has become vacant on <strong>{vacantSlotNotification.date}</strong> at <strong>{vacantSlotNotification.time}</strong> for treatment "<em>{vacantSlotNotification.treatment}</em>". Assign this vacant slot instantly to any patient in our waiting list queue:
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            {WAITING_LIST_QUEUE.map(candidate => (
+            {walkInQueue.filter((w: any) => w.status === 'Waiting').slice(0, 4).map((candidate: any) => (
               <div key={candidate.id} className="bg-white/80 p-3.5 rounded-xl border border-amber-200/60 flex items-center justify-between gap-3 text-xs">
                 <div>
                   <p className="font-bold text-slate-800">{candidate.name}</p>
-                  <p className="text-[10px] text-slate-500">{candidate.treatment} · {candidate.preferred_time}</p>
+                  <p className="text-[10px] text-slate-500">{candidate.treatment} - {candidate.phone}</p>
                 </div>
                 <button
                   onClick={() => handleAssignSlot(candidate)}
@@ -558,6 +817,7 @@ export default function Appointments() {
                     <td className="px-4 py-3.5">Assigned Specialist</td>
                     <td className="px-4 py-3.5">Treatment</td>
                     <td className="px-4 py-3.5">Slot Schedule</td>
+                    <td className="px-4 py-3.5">Chair</td>
                     <td className="px-4 py-3.5">Roster Status</td>
                     {admin && (
                       <>
@@ -570,7 +830,7 @@ export default function Appointments() {
                 </thead>
                 <tbody className="divide-y text-slate-705">
                   {filtered.map(a => (
-                    <tr key={a.id} className={`hover:bg-slate-50/50 transition-colors ${selectedIds.includes(a.id) ? 'bg-teal-50/10' : ''}`}>
+                    <tr key={a.id} className={`hover:bg-slate-50/50 transition-colors ${selectedIds.includes(a.id) ? 'bg-teal-50/10' : ''} ${a.notes?.includes('[CONFLICT') ? 'bg-red-50/30' : ''}`}>
                       <td className="p-4 text-center">
                         <input
                           type="checkbox"
@@ -582,6 +842,11 @@ export default function Appointments() {
                       <td className="px-4 py-3">
                         <p className="font-bold text-slate-800 text-sm hover:text-teal-600 cursor-pointer transition" onClick={() => handleOpenEditModal(a)}>{a.name}</p>
                         <p className="text-xs text-slate-400 font-medium">{a.phone}</p>
+                        {a.appointment_type && a.appointment_type !== 'Scheduled' && (
+                          <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold">
+                            {a.appointment_type}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
@@ -593,16 +858,28 @@ export default function Appointments() {
                         <span className="bg-slate-100 border border-slate-200 text-slate-605 px-2 py-0.5 rounded-lg">
                           {a.treatment}
                         </span>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{a.duration_minutes || 30} min</p>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 text-xs text-slate-700 font-semibold"><Calendar size={12} className="text-slate-400" />{a.next_visit}</div>
                         <div className="flex items-center gap-1 text-xs text-slate-400 mt-0.5"><Clock size={12} className="text-slate-400" />{a.appointment_time || 'General'}</div>
                       </td>
                       <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <Armchair size={12} className="text-slate-400" />
+                          <span className="text-xs text-slate-600">{a.chair?.name || (a.chair_id ? `C${a.chair_id}` : '-')}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
                         <select value={a.status} onChange={e => updateStatus(a.id, e.target.value)}
                           className={`text-xs px-2 py-1.5 rounded-lg border cursor-pointer outline-none ${statusBadge(a.status)}`}>
                           {STATUS_OPTIONS.map(s => <option key={s} className="bg-white text-slate-800">{s}</option>)}
                         </select>
+                        {a.notes?.includes('[CONFLICT') && (
+                          <div className="flex items-center gap-1 mt-1 text-[10px] text-red-500">
+                            <AlertTriangle size={10} /> Conflict
+                          </div>
+                        )}
                       </td>
                       {admin && (
                         <>
@@ -619,7 +896,7 @@ export default function Appointments() {
                           >
                             <Edit2 size={13} />
                           </button>
-                          
+
                           {admin && (
                             <button
                               onClick={() => handleDelete(a.id)}
@@ -773,6 +1050,53 @@ export default function Appointments() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Duration</label>
+                  <select value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: parseInt(e.target.value) }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white outline-none focus:ring-1 focus:ring-teal-500">
+                    {DURATION_OPTIONS.map(d => <option key={d} value={d}>{d} min</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Chair</label>
+                  <select value={form.chair_id} onChange={e => setForm(f => ({ ...f, chair_id: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white outline-none focus:ring-1 focus:ring-teal-500">
+                    <option value="">Auto-assign</option>
+                    {chairs.map((c: any) => (
+                      <option key={c.id} value={c.id}>{c.chair_number} - {c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Type</label>
+                  <select value={form.appointment_type} onChange={e => setForm(f => ({ ...f, appointment_type: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white outline-none focus:ring-1 focus:ring-teal-500">
+                    {APPOINTMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Conflict Warning */}
+              {conflictWarning && (
+                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 flex items-start gap-3">
+                  <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-red-700">Scheduling Conflict Detected</p>
+                    <p className="text-[10px] text-red-600 mt-0.5">
+                      {conflictWarning.type === 'doctor_double_booked' && 'Doctor is already booked at this time.'}
+                      {conflictWarning.type === 'chair_double_booked' && 'Chair is already booked at this time.'}
+                      {conflictWarning.type === 'doctor_on_leave' && 'Doctor has approved leave during this time.'}
+                      {conflictWarning.type === 'outside_schedule_hours' && 'Time is outside doctor working hours.'}
+                      {conflictWarning.type === 'break_time' && 'Time overlaps with doctor break.'}
+                      {conflictWarning.type === 'doctor_unavailable' && 'Doctor is marked unavailable for this day.'}
+                      {conflictWarning.type === 'doctor_no_schedule' && 'Doctor does not have a schedule for this day.'}
+                    </p>
+                    <p className="text-[10px] text-red-500 mt-1">You can still proceed, but the appointment will be flagged.</p>
+                  </div>
+                </div>
+              )}
+
               {admin && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -913,6 +1237,77 @@ export default function Appointments() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Walk-In Registration Modal */}
+      {showWalkInModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl animate-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="px-5 py-4 border-b flex items-center justify-between bg-amber-500 text-white">
+              <h3 className="font-bold text-sm tracking-tight flex items-center gap-2">
+                <UserPlus size={16} /> Register Walk-In Patient
+              </h3>
+              <button onClick={() => setShowWalkInModal(false)} className="p-1 hover:bg-amber-600 rounded-lg cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleWalkInCheckIn} className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Patient Name *</label>
+                  <input value={walkInForm.name} onChange={e => setWalkInForm(f => ({ ...f, name: e.target.value }))} required
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Phone</label>
+                  <input value={walkInForm.phone} onChange={e => setWalkInForm(f => ({ ...f, phone: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-amber-500" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Treatment</label>
+                  <select value={walkInForm.treatment} onChange={e => setWalkInForm(f => ({ ...f, treatment: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white outline-none focus:ring-1 focus:ring-amber-500">
+                    <option value="">General</option>
+                    {TREATMENTS.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Preferred Doctor</label>
+                  <select value={walkInForm.preferred_doctor_id} onChange={e => setWalkInForm(f => ({ ...f, preferred_doctor_id: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold bg-white outline-none focus:ring-1 focus:ring-amber-500">
+                    <option value="">Any Available</option>
+                    {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Priority (1=Low, 10=Urgent)</label>
+                <input type="range" min="1" max="10" value={walkInForm.priority} onChange={e => setWalkInForm(f => ({ ...f, priority: parseInt(e.target.value) }))}
+                  className="w-full" />
+                <div className="flex justify-between text-[10px] text-slate-400">
+                  <span>Low</span>
+                  <span className="font-bold text-amber-600">{walkInForm.priority}</span>
+                  <span>Urgent</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Notes</label>
+                <textarea value={walkInForm.notes} onChange={e => setWalkInForm(f => ({ ...f, notes: e.target.value }))} rows={2}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold resize-none focus:outline-none focus:ring-1 focus:ring-amber-500" />
+              </div>
+              <div className="flex items-center gap-2 pt-3 border-t justify-end">
+                <button type="button" onClick={() => setShowWalkInModal(false)}
+                  className="px-4 py-2 border border-slate-200 rounded-lg text-slate-500 text-xs font-bold hover:bg-slate-50 cursor-pointer">Cancel</button>
+                <button type="submit" disabled={saving}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition disabled:opacity-65">
+                  {saving ? 'Adding...' : 'Add to Queue'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

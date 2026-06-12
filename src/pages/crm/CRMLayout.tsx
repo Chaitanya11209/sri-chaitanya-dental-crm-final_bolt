@@ -5,13 +5,20 @@ import {
   FileText, DollarSign, Bell, LogOut, Menu,
   ChevronRight, Building2, Shield, UserCircle, UserCog, TrendingUp, FolderDown, Settings,
   Search, X, Loader2, Calendar, Phone, Mail, MapPin, CheckCircle2, AlertCircle, RefreshCw, HeartPulse,
-  Clock
+  Clock, Lock
 } from 'lucide-react';
 import { logout, getCurrentUser, isAdmin, getRole, isLoggedIn, validateSession } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 
 interface CRMLayoutProps {
   children: React.ReactNode;
+}
+
+interface UserModulePermission {
+  module_id: string;
+  can_view: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
 }
 
 export default function CRMLayout({ children }: CRMLayoutProps) {
@@ -21,6 +28,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
   const [dynamicRole, setDynamicRole] = useState<string | null>(null);
   const [roleLookupFailed, setRoleLookupFailed] = useState(false);
   const [roleLookupError, setRoleLookupError] = useState<string | null>(null);
+  const [userPermissions, setUserPermissions] = useState<Record<string, boolean>>({});
 
   // Global search & real-time syncing states
   const [isGlobalSyncing, setIsGlobalSyncing] = useState(false);
@@ -99,31 +107,36 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
   const admin = isAdmin();
   const roleName = getRole();
 
+  // Module definitions - will be filtered by permissions
   const allNavItems = [
-    { path: '/crm/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, roleCheck: (r: string) => true, category: 'staff' },
-    { path: '/crm/patients',     label: 'Patients',     icon: Users,           roleCheck: (r: string) => true, category: 'staff' },
-    { path: '/crm/appointments', label: 'Appointments', icon: CalendarPlus,    roleCheck: (r: string) => true, category: 'staff' },
-    { path: '/crm/treatments',   label: 'Treatments',   icon: Stethoscope,     roleCheck: (r: string) => true, category: 'staff' },
-    { path: '/crm/doctors',      label: 'Doctors',      icon: HeartPulse,      roleCheck: (r: string) => true, category: 'staff' },
-    { path: '/crm/followups',    label: 'Follow-ups',   icon: Bell,            roleCheck: (r: string) => true, category: 'staff' },
-    { path: '/crm/billing',      label: 'Billing & Invoices',  icon: FileText,        roleCheck: (r: string) => checkIsAdmin(r), category: 'admin', adminOnly: true },
-    { path: '/crm/reports',      label: 'Reports & Analytics', icon: TrendingUp,      roleCheck: (r: string) => checkIsAdmin(r), category: 'admin', adminOnly: true },
-    { path: '/crm/collections',  label: 'Collections Ledger',  icon: DollarSign,      roleCheck: (r: string) => checkIsAdmin(r), category: 'admin', adminOnly: true },
-    { path: '/crm/users',        label: 'Users & Roles',       icon: UserCog,         roleCheck: (r: string) => checkIsAdmin(r), category: 'admin', adminOnly: true },
-    { path: '/crm/export',       label: 'Backup & Export',     icon: FolderDown,      roleCheck: (r: string) => checkIsAdmin(r), category: 'admin', adminOnly: true },
-    { path: '/crm/settings',     label: 'CRM Settings',        icon: Settings,        roleCheck: (r: string) => checkIsAdmin(r), category: 'admin', adminOnly: true },
+    { id: 'dashboard', path: '/crm/dashboard', label: 'Dashboard', icon: LayoutDashboard, category: 'staff' },
+    { id: 'patients', path: '/crm/patients', label: 'Patients', icon: Users, category: 'staff' },
+    { id: 'appointments', path: '/crm/appointments', label: 'Appointments', icon: CalendarPlus, category: 'staff' },
+    { id: 'treatments', path: '/crm/treatments', label: 'Treatments', icon: Stethoscope, category: 'staff' },
+    { id: 'doctors', path: '/crm/doctors', label: 'Doctors', icon: HeartPulse, category: 'staff' },
+    { id: 'followups', path: '/crm/followups', label: 'Follow-ups', icon: Bell, category: 'staff' },
+    { id: 'billing', path: '/crm/billing', label: 'Billing & Invoices', icon: FileText, category: 'admin', adminOnly: true },
+    { id: 'reports', path: '/crm/reports', label: 'Reports & Analytics', icon: TrendingUp, category: 'admin', adminOnly: true },
+    { id: 'collections', path: '/crm/collections', label: 'Collections', icon: DollarSign, category: 'admin', adminOnly: true },
+    { id: 'users', path: '/crm/users', label: 'Users & Roles', icon: UserCog, category: 'admin', adminOnly: true },
+    { id: 'permissions', path: '/crm/permissions', label: 'Permissions', icon: Lock, category: 'admin', adminOnly: true },
+    { id: 'export', path: '/crm/export', label: 'Backup & Export', icon: FolderDown, category: 'admin', adminOnly: true },
+    { id: 'settings', path: '/crm/settings', label: 'CRM Settings', icon: Settings, category: 'admin', adminOnly: true },
   ];
 
-  function checkIsAdmin(role: string | null) {
-    if (!role) return false;
-    return role.toLowerCase().trim() === 'admin';
-  }
+  // Filter nav items based on user permissions
+  const navItems = allNavItems.filter(item => {
+    // Admin has access to everything
+    if (admin) return true;
 
-  function checkIsAdminOrDoctor(role: string | null) {
-    if (!role) return false;
-    const normalized = role.toLowerCase().trim();
-    return normalized === 'admin' || normalized === 'doctor';
-  }
+    // Check dynamic permissions
+    if (userPermissions[item.id] !== undefined) {
+      return userPermissions[item.id];
+    }
+
+    // Fallback: staff-level modules for non-admins
+    return item.category === 'staff';
+  });
 
   // Centralized auth guard and administrator/role path protection with strict runtime validation:
   useEffect(() => {
@@ -195,12 +208,24 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
       setDynamicRole(sanitizedRole);
       localStorage.setItem('userRole', sanitizedRole);
 
-      // Strict role-based protection for sensitive routes
-      const matchingItem = allNavItems.find(item => location.startsWith(item.path));
-      if (matchingItem) {
-        const hasAccess = matchingItem.roleCheck(sanitizedRole);
-        // Direct route restriction: we do not redirect unauthorized users so they stay on the typed path, but we render layout-level Access Denied.
+      // Load user permissions from database
+      if (sanitizedRole !== 'admin') {
+        try {
+          const { data: permissions } = await supabase
+            .from('user_permissions')
+            .select('module_id, can_view')
+            .eq('user_id', sessionRes.data?.session?.user?.id);
+
+          const permMap: Record<string, boolean> = {};
+          (permissions || []).forEach((p: UserModulePermission) => {
+            permMap[p.module_id] = p.can_view;
+          });
+          setUserPermissions(permMap);
+        } catch (e) {
+          console.warn('Could not load user permissions, using defaults');
+        }
       }
+
       setRoleLookupFailed(false);
       setSessionChecked(true);
     };
@@ -254,7 +279,6 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
 
   // Filter navigation items dynamically based on active CRM staff roles
   const activeRole = dynamicRole || roleName;
-  const navItems = allNavItems.filter(item => item.roleCheck(activeRole));
 
   const currentNav = navItems.find(item => location.startsWith(item.path));
 
@@ -264,13 +288,14 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
     '/crm/reports',
     '/crm/staff',
     '/crm/users',
+    '/crm/permissions',
     '/crm/settings',
     '/crm/audit',
     '/crm/collections',
     '/crm/export'
   ];
   const isRestrictedPath = restrictedPaths.some(p => location.startsWith(p));
-  const hasAccessDenied = isRestrictedPath && activeRole !== 'admin';
+  const hasAccessDenied = isRestrictedPath && !admin;
 
   // Nice role label helper
   const formatRoleLabel = (role: string) => {
@@ -292,7 +317,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
     if (role === 'admin') return 'bg-teal-50 text-teal-700 border border-teal-100';
     if (role === 'doctor') return 'bg-indigo-50 text-indigo-700 border border-indigo-100';
     if (role === 'receptionist') return 'bg-blue-50 text-blue-700 border border-blue-100';
-    return 'bg-slate-100 text-slate-705 border border-slate-200';
+    return 'bg-slate-100 text-slate-700 border border-slate-200';
   };
 
   return (
@@ -368,7 +393,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
             })}
           </div>
 
-          {/* Section 2: Administrative Desk - Only displayed if active role can access admin items */}
+          {/* Section 2: Administrative Desk */}
           {navItems.some(item => item.category === 'admin') && (
             <div className="space-y-1">
               <div className="text-[10px] uppercase font-mono font-bold text-amber-500 mb-2.5 px-2.5 tracking-wider border-b border-slate-900 pb-1.5">
@@ -391,7 +416,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                     <span className="flex-1 truncate">{label}</span>
                     {adminOnly && (
                       <span className="text-[8px] font-bold uppercase tracking-wider bg-amber-950/60 text-amber-500 border border-amber-900/50 px-1.5 py-0.5 rounded">
-                        Admin Only
+                        Admin
                       </span>
                     )}
                     {isActive && <ChevronRight size={12} className="text-teal-400" />}

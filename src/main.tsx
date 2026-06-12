@@ -12,6 +12,7 @@ import Billing from "./pages/crm/Billing";
 import Collections from "./pages/crm/Collections";
 import Followups from "./pages/crm/Followups";
 import Users from "./pages/crm/Users";
+import Permissions from "./pages/crm/Permissions";
 import Analytics from "./pages/crm/Analytics";
 import Export from "./pages/crm/Export";
 import Settings from "./pages/crm/Settings";
@@ -46,6 +47,7 @@ function CRMRoutes() {
         <Route path="/crm/collections" component={Collections} />
         <Route path="/crm/followups" component={Followups} />
         <Route path="/crm/users" component={Users} />
+        <Route path="/crm/permissions" component={Permissions} />
         <Route path="/crm/export" component={Export} />
         <Route path="/crm/settings" component={Settings} />
         <Route>
