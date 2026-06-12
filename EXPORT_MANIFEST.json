@@ -61,8 +61,8 @@
   },
   {
     "full path": "EXPORT_MANIFEST.json",
-    "file size": 22816,
-    "modified timestamp": "2026-06-12T15:29:29.992Z"
+    "file size": 22995,
+    "modified timestamp": "2026-06-12T15:36:31.763Z"
   },
   {
     "full path": "index.html",
@@ -813,6 +813,11 @@
     "full path": "supabase/migrations/20260612152348_20260612181000_reporting_system.sql",
     "file size": 12254,
     "modified timestamp": "2026-06-12T15:27:03.467Z"
+  },
+  {
+    "full path": "supabase/migrations/20260612153510_20260612190000_security_hardening.sql",
+    "file size": 17429,
+    "modified timestamp": "2026-06-12T15:36:31.201Z"
   },
   {
     "full path": "supabase/policies/policies.sql",
