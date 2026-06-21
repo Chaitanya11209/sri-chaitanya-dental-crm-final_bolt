@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # Multi-Clinic CRM Frontend & Service Application Nodes
+  clinic-web-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clinic_system_srv
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+    depends_on:
+      - clinic-database
+    restart: always
+
+  # State-authoritative PostgreSQL Stateful Node
+  clinic-database:
+    image: postgres:16-alpine
+    container_name: clinic_postgres_db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=clinic_management_saas
+      - POSTGRES_USER=saas_admin
+      - POSTGRES_PASSWORD=supersecureclinicsecret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  pgdata:
+    driver: local

@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 550" width="100%" height="100%">
+  <!-- White background card container -->
+  <rect width="100%" height="100%" fill="#ffffff" rx="24"/>
+  
+  <g transform="translate(10, 15)">
+    <!-- Crescent Swoosh (Teal) -->
+    <path d="M 230 50 
+             C 335 50 380 140 380 230 
+             C 380 325 300 390 215 390 
+             C 160 390 120 365 100 330
+             C 85 305 80 255 105 240
+             C 125 230 145 255 155 270
+             C 165 285 185 320 220 320
+             C 275 320 315 280 315 225
+             C 315 160 280 110 230 110
+             C 205 110 180 125 165 145
+             C 135 125 105 130 90 150
+             C 70 175 80 225 105 240
+             C 65 200 65 130 110 90
+             C 145 60 190 50 230 50 Z" 
+          fill="#12565A" />
+
+    <!-- Supporting Hand Fingers (Teal) -->
+    <path d="M 85 245 C 70 220 75 230 90 250 C 105 270 130 295 170 315" stroke="#12565A" stroke-width="7" stroke-linecap="round" fill="none" />
+    <path d="M 98 235 C 85 215 90 225 102 240 C 115 255 140 280 175 295" stroke="#12565A" stroke-width="7" stroke-linecap="round" fill="none" />
+
+    <!-- Smiling Tooth Shape (White, with Teal Outline) -->
+    <path d="M 180 150 
+             C 165 100 205 75 230 95 
+             C 245 105 265 105 280 95 
+             C 305 75 345 100 330 150 
+             C 325 195 305 215 295 235 
+             C 285 255 295 305 285 335 
+             C 275 355 260 355 255 325 
+             C 250 295 250 265 250 235
+             C 250 265 250 295 245 325 
+             C 240 355 225 355 215 335 
+             C 205 305 215 255 205 235 
+             C 195 215 175 195 180 150 Z" 
+          fill="#FFFFFF" 
+          stroke="#12565A" 
+          stroke-width="5" 
+          stroke-linejoin="round" />
+
+    <!-- Smiley Face Eyes and Smile -->
+    <circle cx="235" cy="165" r="5" fill="#12565A" />
+    <circle cx="275" cy="165" r="5" fill="#12565A" />
+    <path d="M 235 185 Q 255 205 275 185" fill="none" stroke="#12565A" stroke-width="4.5" stroke-linecap="round" />
+
+    <!-- Curved Text: We Care For Your Smile -->
+    <path id="curve" d="M 90 380 Q 225 435 360 380" fill="none" stroke="none" />
+    <text font-family="'Inter', sans-serif" font-size="14.5" font-weight="800" fill="#1b5255" letter-spacing="1">
+      <textPath href="#curve" startOffset="50%" text-anchor="middle">
+        • We Care For Your Smile •
+      </textPath>
+    </text>
+
+    <!-- Dr. J. Durga Bhavani text -->
+    <text x="225" y="445" font-family="Georgia, serif" font-size="28" font-weight="bold" fill="#12565A" text-anchor="middle">Dr. J. Durga Bhavani</text>
+    
+    <!-- Title beneath the doctor name -->
+    <text x="225" y="475" font-family="'Inter', sans-serif" font-size="15" font-weight="bold" fill="#111827" text-anchor="middle" letter-spacing="0.5">Cosmetic Dental Surgeon</text>
+
+    <!-- Decorative separator flourish -->
+    <line x1="80" y1="505" x2="185" y2="505" stroke="#12565A" stroke-width="2.5" />
+    <line x1="265" y1="505" x2="370" y2="505" stroke="#12565A" stroke-width="2.5" />
+    <!-- Flourish shape in center -->
+    <circle cx="225" cy="505" r="4.5" fill="none" stroke="#12565A" stroke-width="2.5" />
+    <ellipse cx="213" cy="505" rx="5.5" ry="3" fill="none" stroke="#12565A" stroke-width="2.5" />
+    <ellipse cx="237" cy="505" rx="5.5" ry="3" fill="none" stroke="#12565A" stroke-width="2.5" />
+    <ellipse cx="225" cy="497" rx="3" ry="5.5" fill="none" stroke="#12565A" stroke-width="2.5" />
+    <ellipse cx="225" cy="513" rx="3" ry="5.5" fill="none" stroke="#12565A" stroke-width="2.5" />
+  </g>
+</svg>

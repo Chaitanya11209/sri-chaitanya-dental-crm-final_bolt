@@ -1,0 +1,6 @@
+{
+  "name": "Sri Chaitanya Dental Care CRM",
+  "description": "High Density clinical management system for Sri Chaitanya Dental Care with patient tracking, appointment booking, treatments, staff management, and billing.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
