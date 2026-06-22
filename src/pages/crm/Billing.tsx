@@ -216,7 +216,6 @@ export default function Billing() {
           balance_amount: balanceDueVal,
           payment_mode: billForm.payment_mode,
           payment_notes: paymentNotesJSON,
-          invoice_no: billForm.invoice_no,
           doctor_name: billForm.doctor_name,
           notes: billForm.doctor_notes
         }]);
@@ -235,7 +234,6 @@ export default function Billing() {
           balance_amount: balanceDueVal,
           payment_mode: billForm.payment_mode,
           payment_notes: paymentNotesJSON,
-          invoice_no: billForm.invoice_no,
           doctor_name: billForm.doctor_name,
           notes: billForm.doctor_notes
         }).eq('id', billForm.id);
@@ -252,7 +250,6 @@ export default function Billing() {
               amount_paid: Number(billForm.amount_paid || 0),
               balance_amount: balanceDueVal,
               payment_mode: billForm.payment_mode,
-              invoice_no: billForm.invoice_no,
               doctor_name: billForm.doctor_name,
               notes: `${billForm.doctor_notes}\n[Billing JSON: ${paymentNotesJSON}]`.trim()
             }).eq('id', billForm.id);

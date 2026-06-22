@@ -31,13 +31,14 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import RoleGuard from "./components/RoleGuard";
 import { NotificationProvider } from "./components/NotificationProvider";
 import { AppointmentsProvider } from "./components/AppointmentsContext";
-import { isAdmin, isDoctor } from "./lib/auth";
+import { isAdmin, isDoctor, getRole, hasAccessToRoute } from "./lib/auth";
 import "./index.css";
 
 const queryClient = new QueryClient();
 
 function AdminRoute({ path, component: Component }: { path: string; component: React.ComponentType<any> }) {
-  const authorized = isAdmin() || isDoctor();
+  const role = getRole();
+  const authorized = hasAccessToRoute(path, role);
   return (
     <Route path={path}>
       {authorized ? <Component /> : <Redirect to="/crm/dashboard" />}
@@ -46,7 +47,8 @@ function AdminRoute({ path, component: Component }: { path: string; component: R
 }
 
 function AdminOnlyRoute({ path, component: Component }: { path: string; component: React.ComponentType<any> }) {
-  const authorized = isAdmin();
+  const role = getRole();
+  const authorized = hasAccessToRoute(path, role);
   return (
     <Route path={path}>
       {authorized ? <Component /> : <Redirect to="/crm/dashboard" />}

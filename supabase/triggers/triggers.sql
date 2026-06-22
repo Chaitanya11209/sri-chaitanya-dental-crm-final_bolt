@@ -42,19 +42,22 @@ BEGIN
     SELECT id INTO existing_patient_id FROM patients WHERE id = NEW.patient_id;
   END IF;
 
-  IF existing_patient_id IS NULL AND NEW.phone IS NOT NULL AND NEW.phone <> '' THEN
+  -- Match BOTH name and phone first for accurate family sharing support
+  IF existing_patient_id IS NULL AND NEW.phone IS NOT NULL AND NEW.phone <> '' AND NEW.name IS NOT NULL AND NEW.name <> '' THEN
     SELECT id INTO existing_patient_id 
     FROM patients 
-    WHERE phone = NEW.phone 
-       OR regexp_replace(phone, '\D', '', 'g') = cleaned_phone
+    WHERE LOWER(TRIM(name)) = LOWER(TRIM(NEW.name))
+      AND (phone = NEW.phone OR regexp_replace(phone, '\D', '', 'g') = cleaned_phone)
     ORDER BY id ASC 
     LIMIT 1;
   END IF;
 
-  IF existing_patient_id IS NULL AND NEW.email IS NOT NULL AND NEW.email <> '' THEN
+  -- Match BOTH name and email first for accurate family sharing support
+  IF existing_patient_id IS NULL AND NEW.email IS NOT NULL AND NEW.email <> '' AND NEW.name IS NOT NULL AND NEW.name <> '' THEN
     SELECT id INTO existing_patient_id 
     FROM patients 
-    WHERE email = NEW.email 
+    WHERE LOWER(TRIM(name)) = LOWER(TRIM(NEW.name))
+      AND email = NEW.email 
     ORDER BY id ASC 
     LIMIT 1;
   END IF;
@@ -98,11 +101,12 @@ BEGIN
       COALESCE(NEW.notes, 'Registered automatically from appointment booking'),
       'Registered'
     )
-    ON CONFLICT (phone) DO UPDATE 
-    SET 
-      email = COALESCE(NULLIF(EXCLUDED.email, ''), patients.email),
-      location = COALESCE(NULLIF(EXCLUDED.location, ''), patients.location)
+    ON CONFLICT (patient_code) DO NOTHING
     RETURNING id INTO existing_patient_id;
+
+    IF existing_patient_id IS NULL THEN
+      SELECT id INTO existing_patient_id FROM patients WHERE patient_code = new_code;
+    END IF;
 
     NEW.patient_id := existing_patient_id;
 

@@ -5,9 +5,10 @@ import {
   FileText, DollarSign, Bell, LogOut, Menu,
   ChevronRight, Building2, Shield, UserCircle, UserCog, TrendingUp, FolderDown, Settings,
   Search, X, Loader2, Calendar, Phone, Mail, MapPin, CheckCircle2, AlertCircle, RefreshCw, HeartPulse,
-  Clock, History, Tv, Microscope, Award, Package, MessageSquare, CalendarCheck, Moon, Sun
+  Clock, History, Tv, Microscope, Award, Package, MessageSquare, CalendarCheck, Moon, Sun,
+  Cloud, CloudOff
 } from 'lucide-react';
-import { logout, getCurrentUser, isAdmin, getRole, isLoggedIn, validateSession } from '../../lib/auth';
+import { logout, getCurrentUser, isAdmin, getRole, isLoggedIn, validateSession, hasAccessToRoute } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { useNotification } from '../../components/NotificationProvider';
 import DentalLogo from '../../components/DentalLogo';
@@ -184,18 +185,21 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
   const roleName = getRole();
 
   const allNavItems = [
-    { path: '/crm/dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
-    { path: '/crm/appointments', label: 'Appointments', icon: Calendar },
-    { path: '/crm/followups',    label: 'Follow-ups',   icon: Clock },
-    { path: '/crm/labwork',      label: 'Lab Work',     icon: Microscope },
-    { path: '/crm/letters',      label: 'Letters',      icon: FileText },
-    { path: '/crm/patients',     label: 'Patients',     icon: Users },
-    { path: '/crm/doctors',      label: 'Doctors',      icon: HeartPulse },
-    { path: '/crm/reports',      label: 'Reports',      icon: TrendingUp },
-    { path: '/crm/expenses',     label: 'Expenses',     icon: DollarSign },
-    { path: '/crm/inventory',    label: 'Inventory',    icon: Package },
-    { path: '/crm/profile',      label: 'Profile',      icon: UserCircle },
-    { path: '/crm/setup',        label: 'Setup',        icon: Settings },
+    { path: '/crm/dashboard',    label: 'Dashboard',         icon: LayoutDashboard },
+    { path: '/crm/patients',     label: 'Patients',          icon: Users },
+    { path: '/crm/appointments', label: 'Appointments',      icon: Calendar },
+    { path: '/crm/treatments',   label: 'Treatments',        icon: Stethoscope },
+    { path: '/crm/followups',    label: 'Follow-ups',         icon: Clock },
+    { path: '/crm/billing',      label: 'Billing / Invoices', icon: DollarSign },
+    { path: '/crm/labwork',      label: 'Lab Work',          icon: Microscope },
+    { path: '/crm/patients?view=chart', label: 'Dental Chart', icon: Award },
+    { path: '/crm/letters',      label: 'Letters',           icon: FileText },
+    { path: '/crm/reports',      label: 'Reports',           icon: TrendingUp },
+    { path: '/crm/setup',        label: 'Settings',          icon: Settings },
+    { path: '/crm/doctors',      label: 'Doctors',           icon: HeartPulse },
+    { path: '/crm/expenses',     label: 'Expenses',          icon: DollarSign },
+    { path: '/crm/inventory',    label: 'Inventory',         icon: Package },
+    { path: '/crm/profile',      label: 'Profile',           icon: UserCircle },
   ];
 
   // Centralized auth guard and administrator/role path protection with strict runtime validation:
@@ -351,18 +355,24 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
 
   // Determine allowed paths for the current role
   const getNavItemsForRole = (role: string) => {
-    return allNavItems;
+    return allNavItems.filter(item => hasAccessToRoute(item.path, role));
   };
 
   const navItems = getNavItemsForRole(roleLower);
-  const currentNav = allNavItems.find(item => location.startsWith(item.path));
+  const currentNav = allNavItems.find(item => {
+    const basePath = item.path.split('?')[0];
+    if (item.path.includes('?')) {
+      return location === basePath && window.location.search.includes(item.path.split('?')[1]);
+    }
+    return location === basePath && !window.location.search.includes('view=chart');
+  }) || allNavItems.find(item => location.startsWith(item.path.split('?')[0]));
 
   // Access check for restricted admin-only / doctor-only paths
   const checkHasAccess = (path: string, role: string): boolean => {
-    return true; // Governed in routing level in main.tsx
+    return hasAccessToRoute(path, role);
   };
 
-  const hasAccessDenied = false;
+  const hasAccessDenied = sessionChecked && !checkHasAccess(location, roleLower);
 
   // Nice role label helper
   const formatRoleLabel = (role: string) => {
@@ -415,7 +425,9 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
         {/* Sidebar menu list */}
         <nav className="flex-1 px-4 py-4 space-y-1.5 overflow-y-auto">
           {navItems.map(({ path, label, icon: Icon }) => {
-            const isActive = location.startsWith(path);
+            const isActive = path.includes('?')
+              ? location === path.split('?')[0] && window.location.search.includes(path.split('?')[1])
+              : location === path && !window.location.search.includes('view=chart');
             return (
               <Link
                 key={path}
@@ -433,6 +445,46 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
             );
           })}
         </nav>
+
+        {/* Supabase Status Banner */}
+        <div className="px-4 py-3 mx-4 mb-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/65 dark:bg-slate-900/40 font-semibold text-[11px] space-y-1.5 select-none">
+          <div className="flex items-center justify-between text-slate-400 dark:text-slate-500">
+            <span className="uppercase text-[9px] tracking-wider font-bold">DATABASE SYNC</span>
+            <div className="flex items-center gap-1">
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                !isOnline ? 'bg-red-500' :
+                isGlobalSyncing ? 'bg-amber-500 animate-pulse' :
+                'bg-emerald-500'
+              }`} />
+              <span className="font-mono text-[9px] text-slate-500 dark:text-slate-400">
+                {!isOnline ? 'OFFLINE' : isGlobalSyncing ? 'SYNCING' : 'SECURE'}
+              </span>
+            </div>
+          </div>
+          
+          <button
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('crm-force-sync'));
+              notify('success', 'Sync Initiated', 'Manual synchronization query completed.');
+            }}
+            className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-850 border border-slate-200/60 dark:border-slate-750 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-705 dark:text-slate-350 transition active:scale-[0.98] cursor-pointer"
+            title="Click to force fetch absolute latest records from Supabase"
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              {!isOnline ? (
+                <CloudOff size={13} className="text-red-500 shrink-0" />
+              ) : isGlobalSyncing ? (
+                <Cloud size={13} className="text-amber-500 shrink-0 animate-bounce" />
+              ) : (
+                <Cloud size={13} className="text-emerald-500 shrink-0" />
+              )}
+              <span className="truncate font-sans font-black text-[10px]">
+                {!isOnline ? 'No Cloud Connection' : isGlobalSyncing ? 'Syncing Tables...' : 'Supabase Active'}
+              </span>
+            </div>
+            <RefreshCw size={10} className={`text-slate-400 self-center shrink-0 ${isGlobalSyncing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
 
         {/* Precise Red-bordered Logout Button */}
         <div className="p-4 border-t border-[#E5E7EB] dark:border-slate-800 bg-white dark:bg-slate-900">
@@ -610,7 +662,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 title="Force Synchronize Page Now"
               >
                 <RefreshCw size={11} className={`${isGlobalSyncing ? 'animate-spin text-teal-600' : 'text-slate-500'}`} />
-                <span className="text-[10px] uppercase tracking-wide font-extrabold hidden md:inline">Sync Now</span>
+                <span className="text-[10px] uppercase tracking-wide font-extrabold hidden md:inline">Reload Data</span>
               </button>
               <div className="h-3 w-[1px] bg-slate-300 self-center" />
               <div className="flex items-center gap-1">
@@ -676,6 +728,14 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
               <p className="text-slate-500 text-xs mt-2 max-w-sm leading-relaxed font-semibold">
                 You do not have the required administrative permissions to access this module. Please contact your system administrator if you require authorization.
               </p>
+              <div className="mt-6">
+                <Link
+                  href="/crm/dashboard"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#2F63E0] hover:bg-[#1E4FCC] active:scale-95 transition-all shadow-sm"
+                >
+                  Go to Dashboard
+                </Link>
+              </div>
             </div>
           ) : (
             children
@@ -689,7 +749,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
               { path: '/crm/dashboard', label: 'Dashboard', icon: LayoutDashboard },
               { path: '/crm/appointments', label: 'Appointments', icon: Calendar },
               { path: '/crm/patients', label: 'Patients', icon: Users },
-            ];
+            ].filter(item => hasAccessToRoute(item.path, roleLower));
             return mobileItems.map(item => {
               const isActive = location.startsWith(item.path);
               const Icon = item.icon;

@@ -7,6 +7,7 @@ import { CLINIC_SIGNATURE, openWhatsApp } from '../../utils/whatsapp';
 import { useAppointments, getLocalTodayDateString } from '../../components/AppointmentsContext';
 import { startGlobalSync, stopGlobalSync } from '../../lib/syncState';
 import DoctorSpecificDashboard from '../../components/DoctorSpecificDashboard';
+import { motion } from 'motion/react';
 import {
   Users, CalendarCheck, AlertCircle, DollarSign, UserCheck,
   Clock, CheckCircle2, Activity, TrendingUp, ArrowUpRight,
@@ -15,6 +16,31 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 import { usePatientsRealtime, useAppointmentsRealtime, useTreatmentsRealtime } from '../../hooks/useRealtimeHooks';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.05
+    }
+  }
+} as const;
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 15, scale: 0.98 },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 100,
+      damping: 14
+    }
+  }
+};
 
 const TREATMENT_TYPES = ['RCT', 'Scaling', 'Crown', 'Extraction', 'Orthodontics', 'Implant', 'Cleaning', 'Filling'];
 
@@ -364,6 +390,7 @@ export default function CRMDashboard() {
 
   // Recall Queue states
   const [recalls, setRecalls] = useState<any[]>([]);
+  const [lowStockItems, setLowStockItems] = useState<any[]>([]);
   const [contactedList, setContactedList] = useState<string[]>(() => {
     try {
       const stored = localStorage.getItem('sdc_contacted_recalls');
@@ -504,7 +531,23 @@ export default function CRMDashboard() {
 
     while (attempts < maxAttempts) {
       try {
-        const { data: existing } = await supabase.from('patients').select('id, email, location').eq('phone', bookingRecall.phone).maybeSingle();
+        // Match exactly by both Phone and Name to handle shared phone numbers
+        const { data: existingPatients } = await supabase
+          .from('patients')
+          .select('id, email, location')
+          .eq('phone', bookingRecall.phone)
+          .eq('name', bookingRecall.name);
+        
+        let existing = existingPatients?.[0];
+        if (!existing) {
+          // Fallback to match by phone only
+          const { data: fallbackPatients } = await supabase
+            .from('patients')
+            .select('id, email, location')
+            .eq('phone', bookingRecall.phone);
+          existing = fallbackPatients?.[0];
+        }
+
         let patientId = existing?.id;
         let email = existing?.email || '';
         let location = existing?.location || '';
@@ -587,7 +630,8 @@ export default function CRMDashboard() {
         completedRes, recentRes, weekRes, monthlyRes,
         treatmentsRes, allAppointmentsRes,
         huddlePatientsRes,
-        recentPatientsRes
+        recentPatientsRes,
+        inventoryRes
       ] = await Promise.all([
         supabase.from('patients').select('*', { count: 'exact', head: true }),
         supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('next_visit', today).neq('status', 'Cancelled').neq('status', 'Deleted'),
@@ -595,8 +639,8 @@ export default function CRMDashboard() {
         supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('next_visit', today).eq('status', 'Completed'),
         supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('next_visit', today).eq('status', 'Pending'),
         supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('status', 'In Treatment'),
-        supabase.from('appointments').select('*', { count: 'exact', head: true }).lt('next_visit', today).eq('status', 'Pending'),
-        supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('next_visit', tomorrowStr).eq('status', 'Pending'),
+        supabase.from('appointments').select('*', { count: 'exact', head: true }).lt('next_visit', today).not('status', 'in', '("Completed","Cancelled","Deleted")'),
+        supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('next_visit', tomorrowStr).not('status', 'in', '("Completed","Cancelled","Deleted")'),
         supabase.from('appointments').select('*', { count: 'exact', head: true }).gt('next_visit', tomorrowStr).lte('next_visit', next7Str).neq('status', 'Cancelled').neq('status', 'Deleted'),
         supabase.from('appointments').select('*', { count: 'exact', head: true }).eq('status', 'Completed'),
         supabase.from('appointments').select('*').neq('status', 'Deleted').order('created_at', { ascending: false }).limit(6),
@@ -605,7 +649,28 @@ export default function CRMDashboard() {
         supabase.from('treatments').select('*'),
         supabase.from('appointments').select('*').neq('status', 'Deleted'),
         supabase.from('patients').select('id, phone, patient_status'),
-        supabase.from('patients').select('*').order('created_at', { ascending: false }).limit(6)
+        supabase.from('patients').select('*').order('created_at', { ascending: false }).limit(6),
+        Promise.resolve(supabase.from('inventory').select('*')).then((res) => {
+          if (res.error) {
+            console.warn('[Dashboard] Inventory fetch failed or was blocked by RLS policies. Defaulting gracefully:', res.error);
+            try {
+              const rawLocal = localStorage.getItem('srichaitanya_local_inventory');
+              if (rawLocal) {
+                return { data: JSON.parse(rawLocal), error: null };
+              }
+            } catch (lex) {}
+            return { data: [], error: null };
+          }
+          return res;
+        }).catch(() => {
+          try {
+            const rawLocal = localStorage.getItem('srichaitanya_local_inventory');
+            if (rawLocal) {
+              return { data: JSON.parse(rawLocal), error: null };
+            }
+          } catch (lex) {}
+          return { data: [], error: null };
+        })
       ]);
 
       console.info(`[Dashboard] [DEBUG] fetchAll() completed query. Raw counts returned - allAppointments total size: ${allAppointmentsRes.data?.length || 0}, todayRes count: ${todayRes.count || 0}, recentRes count: ${recentRes.data?.length || 0}`);
@@ -735,7 +800,7 @@ export default function CRMDashboard() {
         followupDue: overdueRes.count || 0,
         overdueFollowups: overdueRes.count || 0,
         tomorrowFollowups: tomorrowRes.count || 0,
-        upcomingFollowups: (allAppointmentsRes.data || []).filter((a: any) => a.next_visit > today && a.status === 'Pending').length,
+        upcomingFollowups: (allAppointmentsRes.data || []).filter((a: any) => a.next_visit > today && a.next_visit <= next7Str && !['Completed', 'Cancelled', 'Deleted'].includes(a.status || '')).length,
         completedTreatments: completedRes.count || 0,
         todayCollection, pendingBalance, monthCollection,
         totalPendingPayments,
@@ -746,6 +811,32 @@ export default function CRMDashboard() {
       refreshAppointments().catch((err) => {
         console.error('[Dashboard] [DEBUG] [ERROR] syncing appointments context:', err);
       });
+
+      let lowStockAlerts: any[] = [];
+      if (inventoryRes && inventoryRes.data) {
+        lowStockAlerts = inventoryRes.data.filter((item: any) => {
+          const currentStock = item.current_stock !== undefined && item.current_stock !== null 
+            ? item.current_stock 
+            : (item.stock !== undefined && item.stock !== null ? item.stock : (item.quantity ?? 0));
+          const limit = item.safety_min_limit !== undefined && item.safety_min_limit !== null 
+            ? item.safety_min_limit 
+            : (item.min_stock !== undefined && item.min_stock !== null ? item.min_stock : (item.reorder_level ?? 0));
+          return currentStock < limit;
+        });
+
+        // Normalize model objects to include all potential formats (name/item_name, stock/current_stock, min_stock/safety_min_limit)
+        lowStockAlerts = lowStockAlerts.map((item: any) => ({
+          ...item,
+          name: item.name || item.item_name || 'Unnamed Item',
+          stock: item.current_stock !== undefined && item.current_stock !== null 
+            ? item.current_stock 
+            : (item.stock !== undefined && item.stock !== null ? item.stock : (item.quantity ?? 0)),
+          min_stock: item.safety_min_limit !== undefined && item.safety_min_limit !== null 
+            ? item.safety_min_limit 
+            : (item.min_stock !== undefined && item.min_stock !== null ? item.min_stock : (item.reorder_level ?? 0)),
+        }));
+      }
+      setLowStockItems(lowStockAlerts);
 
       setRecentAppointments(recentRes.data || []);
       setRecentPatients(recentPatientsRes.data || []);
@@ -994,9 +1085,14 @@ export default function CRMDashboard() {
         <h3 className="font-bold text-sm text-[#111827] tracking-tight font-sans">
           Quick Clinic Status
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <motion.div 
+          className="grid grid-cols-1 md:grid-cols-3 gap-4"
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+        >
           {/* Card 1: Total Registered Patients */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between shadow-xs">
+          <motion.div variants={cardVariants} className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between shadow-xs">
             <div className="space-y-1">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Total Registered Patients</span>
               <div className="flex items-baseline gap-1.5">
@@ -1007,10 +1103,10 @@ export default function CRMDashboard() {
             <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center border border-teal-100/45">
               <Users size={18} strokeWidth={2.5} />
             </div>
-          </div>
+          </motion.div>
 
           {/* Card 2: Today's Appointments */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between shadow-xs">
+          <motion.div variants={cardVariants} className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between shadow-xs">
             <div className="space-y-1">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Today's Appointments</span>
               <div className="flex items-baseline gap-1.5">
@@ -1021,10 +1117,10 @@ export default function CRMDashboard() {
             <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2F63E0] flex items-center justify-center border border-blue-100/45">
               <CalendarCheck size={18} strokeWidth={2.5} />
             </div>
-          </div>
+          </motion.div>
 
           {/* Card 3: Pending Payments */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between shadow-xs">
+          <motion.div variants={cardVariants} className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between shadow-xs">
             <div className="space-y-1">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Pending Payments (Dues)</span>
               <div className="flex items-baseline gap-1.5">
@@ -1037,8 +1133,8 @@ export default function CRMDashboard() {
             <div className="w-10 h-10 rounded-xl bg-red-50 text-[#EF4444] flex items-center justify-center border border-red-100/45">
               <DollarSign size={18} strokeWidth={2.5} />
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </div>
 
       {/* Quick Action Buttons Section */}
@@ -1046,37 +1142,48 @@ export default function CRMDashboard() {
         <h3 className="font-bold text-sm text-[#111827] tracking-tight font-sans">
           Quick Actions
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link href="/crm/appointments">
-            <button className="w-full flex items-center justify-between p-4.5 rounded-[12px] bg-[#2F63E0] hover:bg-[#2554CC] text-white font-semibold transition-all shadow-sm active:scale-98 cursor-pointer group text-xs text-left">
-              <span className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-base">🗓️</span>
-                <span>Schedule Appointment</span>
-              </span>
-              <ChevronRight size={15} className="text-white/75 group-hover:translate-x-1 transition-transform" />
-            </button>
-          </Link>
+        <motion.div 
+          className="grid grid-cols-1 md:grid-cols-3 gap-4"
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+        >
+          <motion.div variants={cardVariants}>
+            <Link href="/crm/appointments">
+              <button className="w-full flex items-center justify-between p-4.5 rounded-[12px] bg-[#2F63E0] hover:bg-[#2554CC] text-white font-semibold transition-all shadow-sm active:scale-98 cursor-pointer group text-xs text-left">
+                <span className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-base">🗓️</span>
+                  <span>Schedule Appointment</span>
+                </span>
+                <ChevronRight size={15} className="text-white/75 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </Link>
+          </motion.div>
 
-          <Link href="/crm/patients">
-            <button className="w-full flex items-center justify-between p-4.5 rounded-[12px] bg-gradient-to-r from-[#8757EA] to-[#8B5CF6] hover:opacity-95 text-white font-semibold transition-all shadow-sm active:scale-98 cursor-pointer group text-xs text-left">
-              <span className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-base">👥</span>
-                <span>Add New Patient</span>
-              </span>
-              <ChevronRight size={15} className="text-white/75 group-hover:translate-x-1 transition-transform" />
-            </button>
-          </Link>
+          <motion.div variants={cardVariants}>
+            <Link href="/crm/patients">
+              <button className="w-full flex items-center justify-between p-4.5 rounded-[12px] bg-gradient-to-r from-[#8757EA] to-[#8B5CF6] hover:opacity-95 text-white font-semibold transition-all shadow-sm active:scale-98 cursor-pointer group text-xs text-left">
+                <span className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-base">👥</span>
+                  <span>Add New Patient</span>
+                </span>
+                <ChevronRight size={15} className="text-white/75 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </Link>
+          </motion.div>
 
-          <Link href="/crm/profile">
-            <button className="w-full flex items-center justify-between p-4.5 rounded-[12px] bg-gradient-to-r from-[#1FA0DD] to-[#22A7F0] hover:opacity-95 text-white font-semibold transition-all shadow-sm active:scale-98 cursor-pointer group text-xs text-left">
-              <span className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-base">⚙️</span>
-                <span>Clinic Profile</span>
-              </span>
-              <ChevronRight size={15} className="text-white/75 group-hover:translate-x-1 transition-transform" />
-            </button>
-          </Link>
-        </div>
+          <motion.div variants={cardVariants}>
+            <Link href="/crm/profile">
+              <button className="w-full flex items-center justify-between p-4.5 rounded-[12px] bg-gradient-to-r from-[#1FA0DD] to-[#22A7F0] hover:opacity-95 text-white font-semibold transition-all shadow-sm active:scale-98 cursor-pointer group text-xs text-left">
+                <span className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-base">⚙️</span>
+                  <span>Clinic Profile</span>
+                </span>
+                <ChevronRight size={15} className="text-white/75 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </Link>
+          </motion.div>
+        </motion.div>
       </div>
 
       {/* Statistics Cards Section */}
@@ -1084,37 +1191,42 @@ export default function CRMDashboard() {
         <h3 className="font-bold text-sm text-[#111827] tracking-tight font-sans">
           Daily Metrics
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <motion.div 
+          className="grid grid-cols-1 md:grid-cols-3 gap-4"
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+        >
           {/* Card 1: Today's Appointments */}
-          <div className="bg-white rounded-[12px] p-6 border border-[#E5E7EB] shadow-xs flex flex-col items-center justify-center min-h-[140px]">
+          <motion.div variants={cardVariants} className="bg-white rounded-[12px] p-6 border border-[#E5E7EB] shadow-xs flex flex-col items-center justify-center min-h-[140px]">
             <p className="text-[52px] font-extrabold text-[#2F63E0] leading-none mb-1 font-sans">
               {todayAppointments.length}
             </p>
             <p className="text-[10px] font-bold text-[#6B7280] tracking-widest uppercase">
               Today's Appointments
             </p>
-          </div>
+          </motion.div>
 
           {/* Card 2: Total Patients */}
-          <div className="bg-white rounded-[12px] p-6 border border-[#E5E7EB] shadow-xs flex flex-col items-center justify-center min-h-[140px]">
+          <motion.div variants={cardVariants} className="bg-white rounded-[12px] p-6 border border-[#E5E7EB] shadow-xs flex flex-col items-center justify-center min-h-[140px]">
             <p className="text-[52px] font-extrabold text-[#14B874] leading-none mb-1 font-sans">
               {stats.totalPatients}
             </p>
             <p className="text-[10px] font-bold text-[#6B7280] tracking-widest uppercase">
               Total Patients
             </p>
-          </div>
+          </motion.div>
 
           {/* Card 3: Total Appointments */}
-          <div className="bg-white rounded-[12px] p-6 border border-[#E5E7EB] shadow-xs flex flex-col items-center justify-center min-h-[140px]">
+          <motion.div variants={cardVariants} className="bg-white rounded-[12px] p-6 border border-[#E5E7EB] shadow-xs flex flex-col items-center justify-center min-h-[140px]">
             <p className="text-[52px] font-extrabold text-[#8757EA] leading-none mb-1 font-sans">
               {stats.totalAppointments}
             </p>
             <p className="text-[10px] font-bold text-[#6B7280] tracking-widest uppercase">
               Total Appointments
             </p>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </div>
 
       {/* ── SRI CHAITANYA CLINICAL DAILY HUDDLE (ADMIN ONLY) ── */}
@@ -1150,7 +1262,7 @@ export default function CRMDashboard() {
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Today's Huddle Volume</span>
-                <span className="bg-blue-50 text-blue-700 p-1.5 rounded-lg border border-blue-105">
+                <span className="bg-blue-50 text-blue-700 p-1.5 rounded-lg border border-blue-200">
                   <Users size={12} />
                 </span>
               </div>
@@ -1163,7 +1275,7 @@ export default function CRMDashboard() {
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-[9px] uppercase font-bold text-amber-700 tracking-wider">Financial Priorities</span>
-                <span className="bg-amber-50 text-amber-700 p-1.5 rounded-lg border border-amber-105">
+                <span className="bg-amber-50 text-amber-700 p-1.5 rounded-lg border border-amber-200">
                   <DollarSign size={12} />
                 </span>
               </div>
@@ -1181,7 +1293,7 @@ export default function CRMDashboard() {
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="text-[9px] uppercase font-bold text-rose-700 tracking-wider">Clinical Follow-up Alerts</span>
-                <span className="bg-rose-50 text-rose-700 p-1.5 rounded-lg border border-rose-105">
+                <span className="bg-rose-50 text-rose-700 p-1.5 rounded-lg border border-rose-200">
                   <Bell size={12} />
                 </span>
               </div>
@@ -1213,7 +1325,7 @@ export default function CRMDashboard() {
                   onClick={() => toggleHuddleChecklist(item.key)}
                   className={`border rounded-xl p-3 flex flex-col justify-between gap-1 cursor-pointer transition select-none
                     ${huddleChecklist[item.key]
-                      ? 'bg-emerald-50 border-emerald-150 text-emerald-850'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'}`}
                 >
                   <div className="flex items-center gap-2">
@@ -1264,7 +1376,7 @@ export default function CRMDashboard() {
                       ${huddleTab === tab.id
                         ? 'bg-white/20 text-white'
                         : tab.id === 'balance' ? 'bg-amber-100 text-amber-800'
-                        : tab.id === 'followup' ? 'bg-rose-105 text-rose-800'
+                        : tab.id === 'followup' ? 'bg-rose-100 text-rose-800'
                         : 'bg-slate-200 text-slate-600'}`}
                     >
                       {tab.count}
@@ -1454,7 +1566,7 @@ export default function CRMDashboard() {
                 <span className="absolute text-slate-800 text-xs font-black">98.4%</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-slate-850 text-xs font-extrabold">Active Success Index</p>
+                <p className="text-slate-800 text-xs font-extrabold">Active Success Index</p>
                 <p className="text-[10px] text-slate-400 mt-0.5">Based on {stats.completedTreatments || 12} resolved clinical courses and follow-up tracking.</p>
               </div>
             </div>
@@ -1479,7 +1591,7 @@ export default function CRMDashboard() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-2 flex-shrink-0">
               <div>
                 <h4 className="text-xs uppercase font-extrabold tracking-wider text-slate-800 flex items-center gap-1.5">
-                  <Clock size={13} className="text-sky-650" />
+                  <Clock size={13} className="text-sky-600" />
                   Chair-time Allocation
                 </h4>
                 <p className="text-[10px] text-slate-400 font-medium">Session duration & utilization</p>
@@ -1490,13 +1602,13 @@ export default function CRMDashboard() {
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-center">
-              <div className="bg-slate-50 border border-slate-105 p-2 rounded-xl border-slate-200">
+              <div className="bg-slate-50 border p-2 rounded-xl border-slate-200">
                 <p className="text-[9px] uppercase text-slate-450 font-bold tracking-wider">Avg Session</p>
                 <p className="text-sm font-black text-slate-800 mt-0.5 font-mono">35 mins</p>
                 <p className="text-[9px] text-emerald-600 mt-0.5 font-semibold">Optimal Speed</p>
               </div>
-              <div className="bg-slate-50 border border-slate-105 p-2 rounded-xl border-slate-200">
-                <p className="text-[9px] uppercase text-slate-450 font-bold tracking-wider">Sessions Done</p>
+              <div className="bg-slate-50 border p-2 rounded-xl border-slate-200">
+                <p className="text-[9px] uppercase text-slate-455 font-bold tracking-wider">Sessions Done</p>
                 <p className="text-sm font-black text-slate-800 mt-0.5 font-mono">
                   {recalls.reduce((done, r) => done + (r.sessions_done || 1), 0) + 4}
                 </p>
@@ -1511,7 +1623,7 @@ export default function CRMDashboard() {
                   <span className="font-mono font-bold text-slate-800">{Math.min(100, Math.round((todayAppointments.length * 35) / 480 * 100))}%</span>
                 </div>
                 <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-sky-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, Math.round((todayAppointments.length * 35) / 480 * 105))}%` }} />
+                  <div className="bg-sky-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, Math.round((todayAppointments.length * 35) / 480 * 100))}%` }} />
                 </div>
               </div>
             </div>

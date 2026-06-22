@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Microscope, Beaker, FileText, CheckCircle2, AlertCircle, Clock, Plus, Search, Calendar, ChevronRight, Download, Eye, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useNotification } from '../../components/NotificationProvider';
 
 interface LabRequest {
   id: string;
@@ -22,10 +23,8 @@ const DEFAULT_LABS: LabRequest[] = [
 ];
 
 export default function LabWork() {
-  const [labs, setLabs] = useState<LabRequest[]>(() => {
-    const cached = localStorage.getItem('crm_labwork_requests');
-    return cached ? JSON.parse(cached) : DEFAULT_LABS;
-  });
+  const { notify } = useNotification();
+  const [labs, setLabs] = useState<LabRequest[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -51,7 +50,7 @@ export default function LabWork() {
       const { data, error } = await supabase
         .from('lab_requests')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('id', { ascending: false });
 
       if (error) throw error;
 
@@ -68,9 +67,12 @@ export default function LabWork() {
           testResult: item.test_result || ''
         }));
         setLabs(mapped);
+      } else {
+        setLabs(DEFAULT_LABS);
       }
     } catch (err) {
-      console.warn('[Labwork Sync] Handled fallback to local memory state.');
+      console.warn('[Labwork Sync] Handled fallback to static demonstration records.');
+      setLabs(DEFAULT_LABS);
     } finally {
       setLoading(false);
     }
@@ -80,13 +82,12 @@ export default function LabWork() {
     fetchLabs();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('crm_labwork_requests', JSON.stringify(labs));
-  }, [labs]);
-
   const handleAddLab = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPatient.trim()) return;
+    if (!newPatient.trim()) {
+      notify('error', 'Validation Error', 'Patient name is required.');
+      return;
+    }
 
     try {
       const { data, error } = await supabase.from('lab_requests').insert([{
@@ -101,75 +102,55 @@ export default function LabWork() {
 
       if (error) throw error;
 
-      if (data && data[0]) {
-        const item = data[0];
-        const req: LabRequest = {
-          id: item.id.toString(),
-          patientName: item.patient_name || '',
-          testName: item.test_name || '',
-          doctorName: item.doctor_name || '',
-          status: item.status || 'Pending Collection',
-          priority: item.priority || 'Routine',
-          date: item.date || new Date().toISOString().split('T')[0],
-          notes: item.notes || '',
-          testResult: item.test_result || ''
-        };
-        setLabs([req, ...labs]);
-      } else {
-        throw new Error("No data returned from insert");
-      }
-    } catch (err) {
-      console.warn('[Labwork Add] Supabase table error, falling back locally.', err);
-      const req: LabRequest = {
-        id: Date.now().toString(),
-        patientName: newPatient,
-        testName: newTest,
-        doctorName: newDoctor,
-        status: 'Pending Collection',
-        priority: newPriority,
-        date: new Date().toISOString().split('T')[0],
-        notes: newNotes
-      };
-      setLabs([req, ...labs]);
+      notify('success', 'Order Placed', `Lab investigation order placed for ${newPatient}`);
+      fetchLabs();
+      
+      setNewPatient('');
+      setNewNotes('');
+      setShowAddForm(false);
+    } catch (err: any) {
+      notify('error', 'Database Error', err.message || 'Failed to submit lab request directly to database');
     }
-
-    setNewPatient('');
-    setNewNotes('');
-    setShowAddForm(false);
   };
 
   const handleUpdateStatus = async (id: string, newStatus: LabRequest['status']) => {
-    setLabs(labs.map(l => l.id === id ? { ...l, status: newStatus } : l));
-    if (selectedLab && selectedLab.id === id) {
-      setSelectedLab({ ...selectedLab, status: newStatus });
-    }
-
     try {
-      await supabase
+      const { error } = await supabase
         .from('lab_requests')
         .update({ status: newStatus })
         .eq('id', parseInt(id));
-    } catch (err) {
-      console.warn('[Labwork Status] Supabase update handled locally.');
+
+      if (error) throw error;
+
+      notify('success', 'Status Synchronized', `Lab request progress updated to ${newStatus}`);
+      fetchLabs();
+      
+      if (selectedLab && selectedLab.id === id) {
+        setSelectedLab(prev => prev ? { ...prev, status: newStatus } : null);
+      }
+    } catch (err: any) {
+      notify('error', 'Update Error', err.message || 'Failed to record case status in database');
     }
   };
 
   const handleSaveResult = async (id: string) => {
-    setLabs(labs.map(l => l.id === id ? { ...l, testResult: editResult, status: 'Report Uploaded' } : l));
-    if (selectedLab && selectedLab.id === id) {
-      setSelectedLab({ ...selectedLab, testResult: editResult, status: 'Report Uploaded' });
-    }
-
     try {
-      await supabase
+      const { error } = await supabase
         .from('lab_requests')
         .update({ test_result: editResult, status: 'Report Uploaded' })
         .eq('id', parseInt(id));
-    } catch (err) {
-      console.warn('[Labwork Result] Supabase result write handled locally.');
-    }
 
-    alert('Lab diagnostic findings successfully saved & published to patient EMR.');
+      if (error) throw error;
+
+      notify('success', 'Findings Locked', 'Lab diagnostic observations compiled successfully in EMR');
+      fetchLabs();
+
+      if (selectedLab && selectedLab.id === id) {
+        setSelectedLab(prev => prev ? { ...prev, testResult: editResult, status: 'Report Uploaded' } : null);
+      }
+    } catch (err: any) {
+      notify('error', 'Saving Error', err.message || 'Failed to register results in database');
+    }
   };
 
   const filtered = labs.filter(l => {

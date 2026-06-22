@@ -4,6 +4,7 @@ import { isAdmin } from '../../lib/auth';
 import { Bell, AlertCircle, Clock, Calendar, MessageCircle, CheckCircle, CalendarDays, X, Phone } from 'lucide-react';
 import { useAppointmentsRealtime } from '../../hooks/useRealtimeHooks';
 import { openWhatsApp } from '../../utils/whatsapp';
+import { syncPatientStatusByAppointment } from '../../utils/syncPatientStatus';
 
 type Tab = 'overdue' | 'today' | 'tomorrow' | 'completed';
 
@@ -84,6 +85,7 @@ export default function Followups() {
 
   const markCompleted = async (id: number) => {
     await supabase.from('appointments').update({ status: 'Completed' }).eq('id', id);
+    await syncPatientStatusByAppointment(id);
     fetchAll();
   };
 
@@ -108,6 +110,7 @@ export default function Followups() {
         .eq('id', rescheduleAppt.id);
 
       if (error) throw error;
+      await syncPatientStatusByAppointment(rescheduleAppt.id);
       setRescheduleAppt(null);
       await fetchAll();
     } catch (err) {

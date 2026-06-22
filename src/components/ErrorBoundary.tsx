@@ -1,4 +1,4 @@
-import { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, LogOut, ArrowLeft, ShieldAlert } from 'lucide-react';
 
 interface Props {
@@ -71,9 +71,25 @@ export default class ErrorBoundary extends Component<Props, State> {
   public handleLogout = () => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem('userEmail');
-        window.localStorage.removeItem('userRole');
-        window.localStorage.removeItem('gdrive_access_token');
+        ['crmAuthMode', 'userEmail', 'userName', 'userRole', 'adminLoggedIn', 'gdrive_access_token'].forEach(key => {
+          window.localStorage.removeItem(key);
+        });
+        
+        // Remove Supabase related storage cache keys cleanly
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const key = window.localStorage.key(i);
+          if (key && (key.startsWith('sb-') || key.includes('supabase'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => {
+          try {
+            window.localStorage.removeItem(key);
+          } catch (e) {
+            console.warn('[ErrorBoundary] Failed to remove key: ' + key, e);
+          }
+        });
       }
     } catch (err) {
       console.warn('[ErrorBoundary] Clean session storage error in sandbox:', err);
@@ -98,8 +114,8 @@ export default class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-6 font-sans">
-          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-6 font-sans" id="error-boundary-screen">
+          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden" id="error-boundary-card">
             
             {/* Top decorative gradient bar */}
             <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-teal-500 via-rose-500 to-amber-500" />
@@ -142,20 +158,23 @@ export default class ErrorBoundary extends Component<Props, State> {
                 <button
                    onClick={this.handleReset}
                    className="px-4 py-2 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-md shadow-teal-500/10 transition cursor-pointer"
+                   id="error-boundary-reset"
                 >
                   <RefreshCw size={13} />
                   Reload Dashboard
                 </button>
                 <button
-                  onClick={this.handleBackToHome}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl flex items-center gap-1.5 border border-slate-700 transition cursor-pointer"
+                   onClick={this.handleBackToHome}
+                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl flex items-center gap-1.5 border border-slate-700 transition cursor-pointer"
+                   id="error-boundary-home"
                 >
                   <ArrowLeft size={13} />
                   Back to Website
                 </button>
                 <button
-                  onClick={this.handleLogout}
-                  className="px-4 py-2 bg-rose-950/40 hover:bg-rose-900/40 text-rose-300 text-xs font-semibold rounded-xl flex items-center gap-1.5 border border-rose-900/30 ml-auto transition cursor-pointer"
+                   onClick={this.handleLogout}
+                   className="px-4 py-2 bg-rose-950/40 hover:bg-rose-900/40 text-rose-300 text-xs font-semibold rounded-xl flex items-center gap-1.5 border border-rose-900/30 ml-auto transition cursor-pointer"
+                   id="error-boundary-logout"
                 >
                   <LogOut size={13} />
                   Log Out Session
@@ -168,6 +187,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    const props = this.props;
+    return props.children || null;
   }
 }

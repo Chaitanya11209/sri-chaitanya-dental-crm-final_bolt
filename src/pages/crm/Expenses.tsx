@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DollarSign, Plus, Trash2, ClipboardList, TrendingDown, Layers, FileDown, PiggyBank, Briefcase, RefreshCw, AlertCircle, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useNotification } from '../../components/NotificationProvider';
 
 interface Expense {
   id: string;
@@ -20,10 +21,8 @@ const DEFAULT_EXPENSES: Expense[] = [
 ];
 
 export default function Expenses() {
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const cached = localStorage.getItem('crm_expenses_ledger');
-    return cached ? JSON.parse(cached) : DEFAULT_EXPENSES;
-  });
+  const { notify } = useNotification();
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,9 +56,12 @@ export default function Expenses() {
           notes: item.notes || ''
         }));
         setExpenses(mapped);
+      } else {
+        setExpenses(DEFAULT_EXPENSES);
       }
     } catch (err) {
-      console.warn('[Expenses Sync] Falling back to offline client cache.');
+      console.warn('[Expenses Sync] Falling back to default list state.');
+      setExpenses(DEFAULT_EXPENSES);
     } finally {
       setLoading(false);
     }
@@ -69,69 +71,50 @@ export default function Expenses() {
     fetchExpenses();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('crm_expenses_ledger', JSON.stringify(expenses));
-  }, [expenses]);
-
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim() || !newAmount.trim()) return;
+    if (!newTitle.trim() || !newAmount.trim()) {
+      notify('error', 'Validation Error', 'Description and amount are required.');
+      return;
+    }
 
     try {
-      const { data, error } = await supabase.from('expenses').insert([{
+      const { error } = await supabase.from('expenses').insert([{
         title: newTitle,
         amount: parseFloat(newAmount),
         category: newCategory,
         date: new Date().toISOString().split('T')[0],
         notes: newNotes
-      }]).select();
+      }]);
 
       if (error) throw error;
 
-      if (data && data[0]) {
-        const item = data[0];
-        const record: Expense = {
-          id: item.id.toString(),
-          title: item.title || '',
-          amount: parseFloat(item.amount || '0'),
-          category: item.category || 'Others',
-          date: item.date || new Date().toISOString().split('T')[0],
-          notes: item.notes || ''
-        };
-        setExpenses([record, ...expenses]);
-      } else {
-        throw new Error("No data returned from insert");
-      }
-    } catch (err) {
-      console.warn('[Expenses Add] Falling back to local ID client assignment.', err);
-      const record: Expense = {
-        id: Date.now().toString(),
-        title: newTitle,
-        amount: parseFloat(newAmount),
-        category: newCategory,
-        date: new Date().toISOString().split('T')[0],
-        notes: newNotes
-      };
-      setExpenses([record, ...expenses]);
-    }
+      notify('success', 'Expense Registered', `Successfully added expense: ${newTitle}`);
+      fetchExpenses();
 
-    setNewTitle('');
-    setNewAmount('');
-    setNewNotes('');
-    setShowAddForm(false);
+      setNewTitle('');
+      setNewAmount('');
+      setNewNotes('');
+      setShowAddForm(false);
+    } catch (err: any) {
+      notify('error', 'Submission Failed', err.message || 'Failed to sync ledger entry with database.');
+    }
   };
 
   const handleDeleteExpense = async (id: string) => {
     if (confirm('Are you absolutely sure you want to remove this ledger entry?')) {
-      setExpenses(expenses.filter(e => e.id !== id));
-
       try {
-        await supabase
+        const { error } = await supabase
           .from('expenses')
           .delete()
           .eq('id', parseInt(id));
-      } catch (err) {
-        console.warn('[Expenses Delete] Deleted locally.');
+
+        if (error) throw error;
+
+        notify('success', 'Entry Pruned', 'Ledger item removed from database.');
+        fetchExpenses();
+      } catch (err: any) {
+        notify('error', 'Removal Failed', err.message || 'Failed to remove ledger item.');
       }
     }
   };

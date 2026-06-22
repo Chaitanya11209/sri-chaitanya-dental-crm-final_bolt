@@ -60,6 +60,58 @@ export function canWriteBilling(): boolean {
   return getRole() === 'admin';
 }
 
+export function hasAccessToRoute(path: string, role: string): boolean {
+  const normalizedPath = path.split('?')[0].toLowerCase().trim();
+  const normalizedRole = (role || '').toLowerCase().trim();
+
+  // Admin has access to everything
+  if (normalizedRole === 'admin') {
+    return true;
+  }
+
+  // Doctor permissions:
+  // Allowed: Dashboard, Patients, Appointments, Treatments, Follow-Ups, Lab Work, Letters, Doctors
+  // Blocked: Settings (/crm/setup, /crm/settings), Expenses (/crm/expenses), System Administration (Users /crm/users, Export /crm/export, Audit /crm/audit).
+  // Also hidden/blocked: Billing (/crm/billing, /crm/collections), Reports (/crm/reports), Profile (/crm/profile), Inventory (/crm/inventory)
+  if (normalizedRole === 'doctor') {
+    const listAllowed = [
+      '/crm/dashboard',
+      '/crm/patients',
+      '/crm/appointments',
+      '/crm/treatments',
+      '/crm/followups',
+      '/crm/labwork',
+      '/crm/letters',
+      '/crm/doctors'
+    ];
+    return listAllowed.some(p => normalizedPath === p);
+  }
+
+  // Staff / Receptionist / Assistant permissions:
+  // Allowed: Dashboard, Patients, Appointments, Treatments, Follow-Ups, Inventory, Lab Work, Doctors
+  // Blocked: Billing (/crm/billing, /crm/collections), Letters (/crm/letters), Reports (/crm/reports), Expenses (/crm/expenses), Settings (/crm/setup, /crm/settings), Profile (/crm/profile)
+  // Also blocked system admin things (Users, Export, Audit)
+  if (normalizedRole === 'receptionist' || normalizedRole === 'assistant' || normalizedRole === 'staff') {
+    const listBlocked = [
+      '/crm/billing',
+      '/crm/collections',
+      '/crm/letters',
+      '/crm/reports',
+      '/crm/expenses',
+      '/crm/setup',
+      '/crm/settings',
+      '/crm/profile',
+      '/crm/users',
+      '/crm/export',
+      '/crm/audit'
+    ];
+    return !listBlocked.some(p => normalizedPath === p);
+  }
+
+  // Default block
+  return false;
+}
+
 export function getCurrentUser(): CRMUser | null {
   const logged = isLoggedIn();
   if (!logged) return null;

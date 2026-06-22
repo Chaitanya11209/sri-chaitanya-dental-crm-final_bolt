@@ -147,6 +147,8 @@ export default function Patients() {
   const admin = isAdmin();
 
   const [doctors, setDoctors] = useState<any[]>([]);
+  const [duplicateFoundPatient, setDuplicateFoundPatient] = useState<any | null>(null);
+  const [bypassNamePhoneDuplicate, setBypassNamePhoneDuplicate] = useState(false);
   const [inlineAction, setInlineAction] = useState<'none' | 'book_appointment' | 'add_follow_up'>('none');
   const [bookingLoading, setBookingLoading] = useState(false);
   const [apptForm, setApptForm] = useState({
@@ -155,7 +157,8 @@ export default function Patients() {
     time: '10:00',
     doctorId: '1',
     doctorName: '',
-    notes: ''
+    notes: '',
+    isHistorical: false
   });
   const [followUpForm, setFollowUpForm] = useState({
     date: '',
@@ -174,7 +177,7 @@ export default function Patients() {
     }
 
     // Validate appointment is not in the past
-    if (apptForm.date) {
+    if (apptForm.date && !apptForm.isHistorical) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const apptDate = new Date(apptForm.date);
@@ -209,7 +212,7 @@ export default function Patients() {
         next_visit: apptForm.date,
         appointment_time: apptForm.time,
         notes: apptForm.notes.trim() || 'Booked via Clinical Quick Actions Menu',
-        status: 'Pending',
+        status: apptForm.isHistorical ? 'Completed' : 'Pending',
         doctor_id: selectedDoc.id,
         doctor_name: selectedDoc.name,
         amount_paid: 0,
@@ -489,29 +492,41 @@ export default function Patients() {
                            !(selected.patient_code && selected.patient_code.startsWith('SDC-F-'));
       
       if (!isStandardId) {
-        // Prevent duplicate patient entries (by phone or email)
-        if (profileForm.phone) {
+        // Warn if duplicate patient entries (both phone and name match, or email and name match)
+        if (profileForm.phone && profileForm.name) {
           const { data: existingPatients, error: checkError } = await supabase
             .from('patients')
             .select('id, name')
             .eq('phone', profileForm.phone.trim());
           
           if (!checkError && existingPatients && existingPatients.length > 0) {
-            notify('error', 'Duplicate Entry Detected', `A patient named "${existingPatients[0].name}" already exists with phone number ${profileForm.phone}.`);
-            setIsSavingProfile(false);
-            return;
+            const matchNamePhone = existingPatients.find(
+              p => p.name.trim().toLowerCase() === profileForm.name.trim().toLowerCase() && p.id !== selected.id
+            );
+            if (matchNamePhone) {
+              if (!confirm(`Warning: A patient named "${matchNamePhone.name}" already exists with phone number ${profileForm.phone}. Are you sure you want to save this as a separate patient profile?`)) {
+                setIsSavingProfile(false);
+                return;
+              }
+            }
           }
         }
-        if (profileForm.email && profileForm.email.trim()) {
+        if (profileForm.email && profileForm.email.trim() && profileForm.name) {
           const { data: existingByEmail, error: checkEmailError } = await supabase
             .from('patients')
             .select('id, name')
             .eq('email', profileForm.email.trim());
           
           if (!checkEmailError && existingByEmail && existingByEmail.length > 0) {
-            notify('error', 'Duplicate Entry Detected', `A patient named "${existingByEmail[0].name}" already exists with email address ${profileForm.email}.`);
-            setIsSavingProfile(false);
-            return;
+            const matchNameEmail = existingByEmail.find(
+              p => p.name.trim().toLowerCase() === profileForm.name.trim().toLowerCase() && p.id !== selected.id
+            );
+            if (matchNameEmail) {
+              if (!confirm(`Warning: A patient named "${matchNameEmail.name}" already exists with email address ${profileForm.email}. Are you sure you want to save this as a separate patient profile?`)) {
+                setIsSavingProfile(false);
+                return;
+              }
+            }
           }
         }
 
@@ -1101,16 +1116,14 @@ export default function Patients() {
     const currentYear = new Date().getFullYear();
     const prefix = `SCDC-${currentYear}-`;
     try {
-      const { data, error } = await supabase
+      const { count, error } = await supabase
         .from('appointments')
-        .select('invoice_no')
-        .not('invoice_no', 'is', null)
-        .ilike('invoice_no', `${prefix}%`);
+        .select('id', { count: 'exact', head: true });
       
       if (error) throw error;
       
-      const count = data ? data.length : 0;
-      const nextSequence = String(count + 1).padStart(6, '0');
+      const countVal = count || 0;
+      const nextSequence = String(countVal + 1).padStart(6, '0');
       return `${prefix}${nextSequence}`;
     } catch (e) {
       console.error("Error generating sequential invoice code", e);
@@ -1956,15 +1969,8 @@ export default function Patients() {
         status: balance > 0 ? 'Confirmed' : 'Completed',
         visit_count: patientAppointments.length + 1,
         visit_type: patientAppointments.length > 0 ? 'Returning' : 'New',
-        invoice_no: invNo,
-        consultation_fee: conFee,
-        treatment_fee: treatFee,
-        lab_charges: labChg,
-        x_ray_charges: xrayChg,
-        discount_amount: discountVal,
-        gst_amount: gstAmt,
-        advance_payment: paid,
-        final_balance: balance
+        doctor_name: billForm.doctor_name,
+        advance_payment: paid
       };
 
       let insertRes = await supabase.from('appointments').insert([paymentPayload]).select();
@@ -1977,6 +1983,7 @@ export default function Patients() {
           const { 
             payment_notes, 
             notes, 
+            invoice_no,
             consultation_fee, 
             treatment_fee, 
             lab_charges, 
@@ -2750,33 +2757,45 @@ export default function Patients() {
     }
   };
 
-  const savePatient = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const savePatient = async (e: React.FormEvent, forceBypass = false) => {
+    if (e) e.preventDefault();
     setSaving(true);
     
-    // Prevent duplicate patient entries (by phone or email)
-    if (form.phone) {
+    // Check for duplicate patient (Same Name AND Same Phone Number)
+    if (form.phone && form.name && !forceBypass && !bypassNamePhoneDuplicate) {
       const { data: existingPatients, error: checkError } = await supabase
         .from('patients')
-        .select('id, name')
+        .select('*')
         .eq('phone', form.phone.trim());
       
       if (!checkError && existingPatients && existingPatients.length > 0) {
-        notify('error', 'Duplicate Entry Detected', `A patient named "${existingPatients[0].name}" already exists with phone number ${form.phone}.`);
-        setSaving(false);
-        return;
+        const matchNamePhone = existingPatients.find(
+          p => p.name.trim().toLowerCase() === form.name.trim().toLowerCase()
+        );
+        if (matchNamePhone) {
+          setDuplicateFoundPatient(matchNamePhone);
+          setSaving(false);
+          return;
+        }
       }
     }
-    if (form.email && form.email.trim()) {
+
+    // Check for duplicate patient (Same Name AND Same Email)
+    if (form.email && form.email.trim() && form.name && !forceBypass && !bypassNamePhoneDuplicate) {
       const { data: existingByEmail, error: checkEmailError } = await supabase
         .from('patients')
-        .select('id, name')
+        .select('*')
         .eq('email', form.email.trim());
       
       if (!checkEmailError && existingByEmail && existingByEmail.length > 0) {
-        notify('error', 'Duplicate Entry Detected', `A patient named "${existingByEmail[0].name}" already exists with email address ${form.email}.`);
-        setSaving(false);
-        return;
+        const matchNameEmail = existingByEmail.find(
+          p => p.name.trim().toLowerCase() === form.name.trim().toLowerCase()
+        );
+        if (matchNameEmail) {
+          setDuplicateFoundPatient(matchNameEmail);
+          setSaving(false);
+          return;
+        }
       }
     }
 
@@ -2792,7 +2811,11 @@ export default function Patients() {
     if (!error) {
       setShowAddModal(false);
       setForm({ name: '', phone: '', email: '', location: '', age: '', gender: '', notes: '', dob: '' });
+      setDuplicateFoundPatient(null);
+      setBypassNamePhoneDuplicate(false);
       fetchPatients();
+    } else {
+      notify('error', 'Error Saving Patient', error?.message || 'Could not insert patient record.');
     }
     setSaving(false);
   };
@@ -3463,6 +3486,41 @@ export default function Patients() {
                     </div>
                   </div>
 
+                  {/* FAMILY SHARED PHONE NUMBER / FAMILY GROUP SUPPORT SECTION */}
+                  {selected.phone && patients.filter(p => p.phone && p.phone.trim() === selected.phone?.trim() && p.id !== selected.id).length > 0 && (
+                    <div className="bg-gradient-to-br from-indigo-50/50 to-blue-50/30 p-4 rounded-2xl border border-blue-100/55 shadow-xs">
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <Users className="text-blue-650 flex-shrink-0" size={18} />
+                        <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Family Group (<span className="text-blue-700 font-bold">{patients.filter(p => p.phone && p.phone.trim() === selected.phone?.trim() && p.id !== selected.id).length + 1} Shared Contacts</span>)</h4>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+                        The following patient files share the same phone contact number (<strong className="font-semibold text-slate-700">{selected.phone}</strong>). Clinical histories, treatments, and billing remain safely separate.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {patients.filter(p => p.phone && p.phone.trim() === selected.phone?.trim() && p.id !== selected.id).map(member => (
+                          <div 
+                            key={member.id} 
+                            onClick={() => openPatientProfile(member)}
+                            className="p-3 bg-white hover:bg-blue-55/70 border border-slate-100 hover:border-blue-200 rounded-xl transition cursor-pointer flex items-center justify-between"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-750 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                                {member.name?.[0]?.toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-800 truncate" title={member.name}>{member.name}</p>
+                                <p className="text-[10px] text-slate-500 font-mono mt-0.5">{member.patient_code}</p>
+                              </div>
+                            </div>
+                            <button className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5">
+                              View Profile <ArrowRight size={10} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Status Badges Row and Edit Profile Trigger */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                     <div>
@@ -3816,7 +3874,8 @@ export default function Patients() {
                                 time: '10:00',
                                 doctorId: doctors[0]?.id?.toString() || '1',
                                 doctorName: doctors[0]?.name || 'Dr. Sri Chaitanya',
-                                notes: ''
+                                notes: '',
+                                isHistorical: false
                               });
                             }}
                             className={`p-3.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-2 shadow-2xs hover:shadow-xs cursor-pointer ${
@@ -3944,6 +4003,20 @@ export default function Patients() {
                                     className="w-full bg-white text-slate-850 border border-blue-200/80 rounded-lg p-2 text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
                                   />
                                 </div>
+                              </div>
+
+                              {/* Historical Record Entry Toggle */}
+                              <div className="flex items-center gap-2 bg-amber-50/50 p-2.5 rounded-xl border border-amber-200/40">
+                                <input
+                                  type="checkbox"
+                                  id="inline_is_historical"
+                                  checked={apptForm.isHistorical || false}
+                                  onChange={(e) => setApptForm(f => ({ ...f, isHistorical: e.target.checked }))}
+                                  className="rounded border-blue-300 text-teal-600 focus:ring-teal-500 h-4 w-4"
+                                />
+                                <label htmlFor="inline_is_historical" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                                  Historical Record Entry <span className="text-[10px] text-amber-600 font-normal">(Documentation; past dates allowed; defaults to Completed)</span>
+                                </label>
                               </div>
 
                               <div>
@@ -5725,7 +5798,8 @@ export default function Patients() {
                         time: '10:00',
                         doctorId: doctors[0]?.id?.toString() || '1',
                         doctorName: doctors[0]?.name || 'Dr. Sri Chaitanya',
-                        notes: ''
+                        notes: '',
+                        isHistorical: false
                       });
                       setShowQuickActions(false);
                       notify('info', 'Appointment Form Ready', 'Please complete appointment details below.');
@@ -5902,79 +5976,131 @@ export default function Patients() {
                 <X size={18} />
               </button>
             </div>
-            <form onSubmit={savePatient} className="p-5 space-y-3">
-              {[
-                { key: 'name', label: 'Full Name', required: true, type: 'text' },
-                { key: 'phone', label: 'Phone Number', required: true, type: 'text' },
-                { key: 'email', label: 'Email', required: false, type: 'text' },
-                { key: 'location', label: 'Location', required: false, type: 'text' },
-              ].map(({ key, label, required, type }) => (
-                <div key={key}>
-                  <label className="text-xs font-semibold text-slate-600 mb-1 block">
-                    {label}{required && ' *'}
-                  </label>
+            {duplicateFoundPatient ? (
+              <div className="p-5 space-y-4">
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
+                  <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5 animate-bounce" size={20} />
+                  <div>
+                    <h4 className="font-bold text-sm text-amber-800">Possible duplicate patient found</h4>
+                    <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                      A patient named <strong className="font-semibold">"{duplicateFoundPatient.name}"</strong> already exists with the contact info <strong className="font-semibold">{duplicateFoundPatient.phone || duplicateFoundPatient.email}</strong> (Code: <code className="bg-amber-100 px-1 py-0.5 rounded text-[10.5px] font-mono">{duplicateFoundPatient.patient_code}</code>).
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openPatientProfile(duplicateFoundPatient);
+                      setShowAddModal(false);
+                      setDuplicateFoundPatient(null);
+                      setBypassNamePhoneDuplicate(false);
+                      setForm({ name: '', phone: '', email: '', location: '', age: '', gender: '', notes: '', dob: '' });
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <UserCheck size={16} /> Open Existing Patient
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBypassNamePhoneDuplicate(true);
+                      savePatient(null as any, true);
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <UserPlus size={16} /> Create New Patient Anyway
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDuplicateFoundPatient(null);
+                      setBypassNamePhoneDuplicate(false);
+                    }}
+                    className="w-full py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 font-semibold text-sm transition flex items-center justify-center cursor-pointer"
+                  >
+                    Back to Edit Form
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={savePatient} className="p-5 space-y-3">
+                {[
+                  { key: 'name', label: 'Full Name', required: true, type: 'text' },
+                  { key: 'phone', label: 'Phone Number', required: true, type: 'text' },
+                  { key: 'email', label: 'Email', required: false, type: 'text' },
+                  { key: 'location', label: 'Location', required: false, type: 'text' },
+                ].map(({ key, label, required, type }) => (
+                  <div key={key}>
+                    <label className="text-xs font-semibold text-slate-600 mb-1 block">
+                      {label}{required && ' *'}
+                    </label>
+                    <input
+                      value={(form as any)[key]}
+                      onChange={(e) => setForm(f => ({ ...f, [key]: e.target.value }))}
+                      required={required}
+                      type={type}
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400"
+                    />
+                  </div>
+                ))}
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Date of Birth</label>
                   <input
-                    value={(form as any)[key]}
-                    onChange={(e) => setForm(f => ({ ...f, [key]: e.target.value }))}
-                    required={required}
-                    type={type}
+                    type="date"
+                    value={form.dob || ''}
+                    onChange={(e) => {
+                      const dobVal = e.target.value;
+                      const calculated = dobVal ? calculateAge(dobVal) : '';
+                      setForm(f => ({ ...f, dob: dobVal, age: calculated }));
+                    }}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400"
                   />
                 </div>
-              ))}
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Date of Birth</label>
-                <input
-                  type="date"
-                  value={form.dob || ''}
-                  onChange={(e) => {
-                    const dobVal = e.target.value;
-                    const calculated = dobVal ? calculateAge(dobVal) : '';
-                    setForm(f => ({ ...f, dob: dobVal, age: calculated }));
-                  }}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Age (Calculated)</label>
-                <input
-                  type="text"
-                  value={form.age}
-                  placeholder="Calculated automatically from Date of Birth"
-                  onChange={(e) => setForm(f => ({ ...f, age: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 font-mono text-slate-700"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Gender</label>
-                <select
-                  value={form.gender}
-                  onChange={(e) => setForm(f => ({ ...f, gender: e.target.value }))}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm"
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Age (Calculated)</label>
+                  <input
+                    type="text"
+                    value={form.age}
+                    placeholder="Calculated automatically from Date of Birth"
+                    onChange={(e) => setForm(f => ({ ...f, age: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 font-mono text-slate-700"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Gender</label>
+                  <select
+                    value={form.gender}
+                    onChange={(e) => setForm(f => ({ ...f, gender: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm"
+                  >
+                    <option value="">Select</option>
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">Notes</label>
+                  <textarea
+                    value={form.notes}
+                    onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+                    rows={2}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm transition disabled:opacity-60 shadow-sm"
                 >
-                  <option value="">Select</option>
-                  <option>Male</option>
-                  <option>Female</option>
-                  <option>Other</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-600 mb-1 block">Notes</label>
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
-                  rows={2}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm transition disabled:opacity-60 shadow-sm"
-              >
-                {saving ? 'Saving…' : 'Add Patient'}
-              </button>
-            </form>
+                  {saving ? 'Saving…' : 'Add Patient'}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}

@@ -40,13 +40,22 @@ export const createAppointment = async (formData: any) => {
   }
 
   // STEP 1
-  // Check existing patient by phone
-
-  const { data: existingPatient } = await supabase
+  // Check existing patient by matching both Name and Phone
+  const { data: existingPatients } = await supabase
     .from('patients')
     .select('*')
     .eq('phone', formData.phone)
-    .maybeSingle();
+    .eq('name', formData.name);
+
+  let existingPatient = existingPatients?.[0];
+  if (!existingPatient) {
+    // Fallback to match by phone only
+    const { data: fallbackPatients } = await supabase
+      .from('patients')
+      .select('*')
+      .eq('phone', formData.phone);
+    existingPatient = fallbackPatients?.[0];
+  }
 
   let patientId = null;
 
@@ -86,12 +95,21 @@ export const createAppointment = async (formData: any) => {
       patientId = newPatients[0].id;
     } else {
       // Re-query if select somehow returned empty range
-      const { data: reQuery } = await supabase
+      const { data: reQueryList } = await supabase
         .from('patients')
         .select('id')
         .eq('phone', formData.phone)
-        .maybeSingle();
-      patientId = reQuery?.id;
+        .eq('name', formData.name);
+      
+      let finalId = reQueryList?.[0]?.id;
+      if (!finalId) {
+        const { data: finalFallback } = await supabase
+          .from('patients')
+          .select('id')
+          .eq('phone', formData.phone);
+        finalId = finalFallback?.[0]?.id;
+      }
+      patientId = finalId;
     }
   }
 

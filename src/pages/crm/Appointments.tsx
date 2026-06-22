@@ -15,6 +15,7 @@ import { sendWhatsAppNotification, logWhatsAppDelivery, getWhatsAppLogs, WhatsAp
 import DoctorSelect from '../../components/DoctorSelect';
 import { broadcastQueueChange } from '../../hooks/useAppointmentSubscription';
 import { useAppointmentsRealtime, usePatientsRealtime } from '../../hooks/useRealtimeHooks';
+import { syncPatientStatus, syncPatientStatusByAppointment } from '../../utils/syncPatientStatus';
 
 const STATUS_OPTIONS = ['Pending', 'Confirmed', 'Reminder Sent', 'Completed', 'Cancelled', 'No Show'];
 const TREATMENTS = [
@@ -164,6 +165,7 @@ export default function Appointments() {
   const [showModal, setShowModal] = useState(false);
   const [editingAppt, setEditingAppt] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isHistorical, setIsHistorical] = useState(false);
 
   // States for checkbox-based bulk sending
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -219,7 +221,19 @@ export default function Appointments() {
 
   const fetchWhatsappDbMessages = async () => {
     try {
-      const { data, error } = await supabase.from('whatsapp_messages').select('*');
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select(`
+          id,
+          phone,
+          message,
+          status,
+          created_at,
+          patient_id,
+          patients ( name )
+        `)
+        .order('id', { ascending: false })
+        .limit(100);
       if (!error && data) {
         setWhatsappDbMessages(data);
       }
@@ -230,6 +244,18 @@ export default function Appointments() {
 
   useEffect(() => {
     fetchWhatsappDbMessages();
+
+    const channel = supabase
+      .channel('whatsapp-messages-realtime-sub')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_messages' }, () => {
+        console.info('[Appointments] [Realtime] whatsapp_messages changed, updating delivery tracker...');
+        fetchWhatsappDbMessages();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const saveSchedulerRules = (updated: any) => {
@@ -668,6 +694,8 @@ export default function Appointments() {
       const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
       if (error) throw error;
 
+      await syncPatientStatusByAppointment(id);
+
       if (status === 'Cancelled') {
         const cancelledAppt = previousAppointments.find(a => a.id === id);
         if (cancelledAppt) {
@@ -702,6 +730,7 @@ export default function Appointments() {
     try {
       const { error } = await supabase.from('appointments').update({ status: 'Deleted' }).eq('id', id);
       if (error) throw error;
+      await syncPatientStatusByAppointment(id);
       notify('success', 'Appointment Deleted', 'Appointment successfully deleted on patient schedule.');
       fetch();
     } catch (err: any) {
@@ -712,9 +741,23 @@ export default function Appointments() {
   const handleAssignSlot = async (candidate: any) => {
     if (!vacantSlotNotification) return;
 
-    // Retrieve or register patient
-    const { data: existing } = await supabase.from('patients').select('id').eq('phone', candidate.phone).maybeSingle();
-    let patientId = existing?.id;
+    // Retrieve or register patient by matching both Name and Phone
+    const { data: existingPatients } = await supabase
+      .from('patients')
+      .select('id')
+      .eq('phone', candidate.phone)
+      .eq('name', candidate.name);
+    
+    let patientId = existingPatients?.[0]?.id;
+    if (!patientId) {
+      // Fallback: search for any patient matching this phone number as raw fallback
+      const { data: fallbackPatients } = await supabase
+        .from('patients')
+        .select('id')
+        .eq('phone', candidate.phone);
+      patientId = fallbackPatients?.[0]?.id;
+    }
+
     if (!patientId) {
       const { data: nps } = await supabase.from('patients').insert([{
         name: candidate.name,
@@ -744,6 +787,12 @@ export default function Appointments() {
     }]).select();
 
     if (!error) {
+      if (patientId) {
+        await syncPatientStatus(patientId);
+      } else if (scheduledAppt?.[0]?.patient_id) {
+        await syncPatientStatus(scheduledAppt[0].patient_id);
+      }
+
       notifyAppointmentBooked({
         name: candidate.name,
         phone: candidate.phone,
@@ -923,6 +972,7 @@ Sri Chaitanya Dental Care`;
     setSelectedPatientId(null);
     setPatientSearchQuery('');
     setShowPatientSuggestions(false);
+    setIsHistorical(false);
     const initialDoc = doctors[0] || FALLBACK_DOCTORS[0];
     setForm({
       name: '',
@@ -946,6 +996,7 @@ Sri Chaitanya Dental Care`;
   const handleOpenEditModal = (a: any) => {
     setEditingAppt(a);
     setSelectedPatientId(a.patient_id || null);
+    setIsHistorical(a.status === 'Completed');
     
     // Find patient code or name to set search query cleanly
     const matchedP = allPatients.find(p => p.id === a.patient_id);
@@ -984,7 +1035,7 @@ Sri Chaitanya Dental Care`;
     }
 
     // Validate appointment is not in the past
-    if (form.next_visit) {
+    if (form.next_visit && !isHistorical) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const apptDate = new Date(form.next_visit);
@@ -1069,6 +1120,10 @@ Sri Chaitanya Dental Care`;
         patient_id: matchedPatientId || null // The DB Trigger will auto-create patient if null
       };
 
+      if (isHistorical) {
+        payload.status = 'Completed';
+      }
+
       // Backup appointments for rollback fallback
       previousAppointments = [...appointments];
 
@@ -1077,7 +1132,7 @@ Sri Chaitanya Dental Care`;
       const optimisticPayload = {
         id: tempId,
         ...payload,
-        status: editingAppt ? (editingAppt.status || 'Pending') : 'Pending',
+        status: isHistorical ? 'Completed' : (editingAppt ? (editingAppt.status || 'Pending') : 'Pending'),
         created_at: new Date().toISOString()
       };
 
@@ -1096,12 +1151,14 @@ Sri Chaitanya Dental Care`;
           .eq('id', editingAppt.id);
 
         if (error) throw error;
+        await syncPatientStatusByAppointment(editingAppt.id);
         notify('success', 'Roster Rescheduled', `Successfully rescheduled and updated Dr. ${selectedDocObj.name} consulting hours.`);
       } else {
         // Insert
-        const { error } = await supabase
+        const { data: insertedData, error } = await supabase
           .from('appointments')
-          .insert([payload]);
+          .insert([payload])
+          .select();
 
         if (error) {
           if (error.code === '23505') {
@@ -1113,35 +1170,42 @@ Sri Chaitanya Dental Care`;
           }
           throw error;
         }
+        if (insertedData?.[0]?.patient_id) {
+          await syncPatientStatus(insertedData[0].patient_id);
+        }
         notify('success', 'Appointment Set', `Successfully scheduled appointment with Dr. ${selectedDocObj.name}`);
         
         // Post-mutation hook broadcast - a new patient has joined the queue
         broadcastQueueChange('new-patient', payload.name);
       }
 
-      // Prepare WhatsApp Notification engine double payload
-      setSavedWhatsAppAlerts({
-        patientName: form.name,
-        patientPhone: form.phone,
-        doctorName: selectedDocObj.name,
-        doctorPhone: selectedDocObj.phone || '918317575165',
-        treatment: form.treatment,
-        date: form.next_visit,
-        time: form.appointment_time,
-        status: editingAppt ? 'Rescheduled' : 'Scheduled'
-      });
+      if (!isHistorical) {
+        // Prepare WhatsApp Notification engine double payload
+        setSavedWhatsAppAlerts({
+          patientName: form.name,
+          patientPhone: form.phone,
+          doctorName: selectedDocObj.name,
+          doctorPhone: selectedDocObj.phone || '918317575165',
+          treatment: form.treatment,
+          date: form.next_visit,
+          time: form.appointment_time,
+          status: editingAppt ? 'Rescheduled' : 'Scheduled'
+        });
 
-      // Dispatch clinic alert email
-      notifyAppointmentBooked({
-        name: form.name,
-        phone: form.phone,
-        email: form.email,
-        treatment: form.treatment,
-        next_visit: form.next_visit,
-        appointment_time: form.appointment_time,
-        notes: `Specialist assigned: ${selectedDocObj.name}`,
-        bookedBy: 'CRM Roster Operator'
-      });
+        // Dispatch clinic alert email
+        notifyAppointmentBooked({
+          name: form.name,
+          phone: form.phone,
+          email: form.email,
+          treatment: form.treatment,
+          next_visit: form.next_visit,
+          appointment_time: form.appointment_time,
+          notes: `Specialist assigned: ${selectedDocObj.name}`,
+          bookedBy: 'CRM Roster Operator'
+        });
+      } else {
+        setSavedWhatsAppAlerts(null);
+      }
 
       setShowModal(false);
       fetch();
@@ -2233,12 +2297,68 @@ Sri Chaitanya Dental Care`;
           </div>
 
           <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-            {getWhatsAppLogs().length === 0 ? (
-              <div className="py-8 text-center text-slate-400 italic text-xs font-medium">
-                No notifications logged yet in the active session. Check appointments or schedule reminders.
-              </div>
-            ) : (
-              getWhatsAppLogs().map((log: any) => {
+            {(() => {
+              const joinedLogs: any[] = [];
+              whatsappDbMessages.forEach((msg: any) => {
+                let tType = 'Reminder';
+                if (msg.message.includes('confirmed') || msg.message.includes('Confirmed') || msg.message.includes('confirm')) {
+                  tType = 'Confirmation';
+                } else if (msg.message.includes('rescheduled') || msg.message.includes('Rescheduled')) {
+                  tType = 'Rescheduled';
+                } else if (msg.message.includes('review') || msg.message.includes('Google')) {
+                  tType = 'Review Request';
+                } else if (msg.message.includes('feedback') || msg.message.includes('How was your')) {
+                  tType = 'Feedback Survey';
+                }
+
+                let recipientName = msg.patients?.name || '';
+                if (!recipientName) {
+                  const matchName = msg.message.match(/Hi\s+([^,]+),/i) || msg.message.match(/Patient:\s+([^\n]+)/i);
+                  recipientName = matchName ? matchName[1].trim() : 'Patient';
+                }
+                
+                joinedLogs.push({
+                  id: 'db-' + msg.id,
+                  recipientName,
+                  recipientPhone: msg.phone,
+                  role: 'Patient',
+                  type: tType,
+                  status: msg.status || 'Sent',
+                  message: msg.message,
+                  timestamp: msg.created_at || new Date().toISOString()
+                });
+              });
+
+              getWhatsAppLogs().forEach((localLog: any) => {
+                const isDupe = joinedLogs.some(dbLog => 
+                  dbLog.recipientPhone === localLog.recipientPhone && 
+                  dbLog.message.substring(0, 30) === localLog.message.substring(0, 30)
+                );
+                if (!isDupe) {
+                  joinedLogs.push({
+                    id: localLog.id,
+                    recipientName: localLog.recipientName,
+                    recipientPhone: localLog.recipientPhone,
+                    role: localLog.role || 'Patient',
+                    type: localLog.type || 'Reminder',
+                    status: localLog.status || 'Sent',
+                    message: localLog.message,
+                    timestamp: localLog.timestamp
+                  });
+                }
+              });
+
+              joinedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+              if (joinedLogs.length === 0) {
+                return (
+                  <div className="py-8 text-center text-slate-400 italic text-xs font-medium">
+                    No notifications logged yet. Check appointments or schedule reminders.
+                  </div>
+                );
+              }
+
+              return joinedLogs.map((log: any) => {
                 const indicator = getWhatsAppMessageTypeIndicator(log.type);
                 return (
                   <div key={log.id} className={`p-3 bg-white border ${indicator.borderColor} rounded-xl flex flex-col gap-1 text-xs shadow-2xs transition-all duration-150 hover:shadow-xs`}>
@@ -2247,7 +2367,7 @@ Sri Chaitanya Dental Care`;
                         <span className="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide font-semibold">{log.role}</span>
                         <span>{log.recipientName}</span>
                       </div>
-                      <span className="text-[10px] text-slate-400 font-mono font-semibold">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                      <span className="text-[10px] text-slate-400 font-mono font-semibold">{new Date(log.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 font-mono flex-wrap">
                       <span className={`px-2 py-0.5 rounded-md border ${indicator.bgColor} ${indicator.textColor} ${indicator.borderColor} font-bold flex items-center gap-1 text-[9px] uppercase tracking-wider`}>
@@ -2262,8 +2382,8 @@ Sri Chaitanya Dental Care`;
                     <p className="text-[10.5px] text-slate-600 italic bg-slate-50/50 border border-slate-100/80 p-1.5 rounded mt-1 font-mono whitespace-pre-line leading-relaxed">{log.message}</p>
                   </div>
                 );
-              })
-            )}
+              });
+            })()}
           </div>
         </div>
 
@@ -2470,6 +2590,20 @@ Sri Chaitanya Dental Care`;
                   <option value="">Select treatment</option>
                   {TREATMENTS.map(t => <option key={t}>{t}</option>)}
                 </select>
+              </div>
+
+              {/* Historical Record Entry Toggle */}
+              <div className="flex items-center gap-2 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100/40">
+                <input
+                  type="checkbox"
+                  id="is_historical_appt"
+                  checked={isHistorical}
+                  onChange={(e) => setIsHistorical(e.target.checked)}
+                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 h-4 w-4"
+                />
+                <label htmlFor="is_historical_appt" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                  Historical Record Entry <span className="text-[10px] text-amber-600 font-normal">(Documentation; past dates allowed; defaults to Completed)</span>
+                </label>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
