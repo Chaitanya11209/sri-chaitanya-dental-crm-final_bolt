@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
 import { useDarkMode } from '../App';
 
@@ -7,9 +7,10 @@ interface BeforeAfterSliderProps {
   after: string;
   beforeAlt: string;
   afterAlt: string;
+  beforeStyle?: React.CSSProperties;
 }
 
-function BeforeAfterSlider({ before, after, beforeAlt, afterAlt }: BeforeAfterSliderProps) {
+function BeforeAfterSlider({ before, after, beforeAlt, afterAlt, beforeStyle }: BeforeAfterSliderProps) {
   const [sliderPosition, setSliderPosition] = useState(50);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -72,6 +73,7 @@ function BeforeAfterSlider({ before, after, beforeAlt, afterAlt }: BeforeAfterSl
           src={before}
           alt={beforeAlt}
           className="w-full h-full object-cover"
+          style={beforeStyle}
           draggable="false"
         />
       </div>
@@ -105,7 +107,19 @@ function BeforeAfterSlider({ before, after, beforeAlt, afterAlt }: BeforeAfterSl
   );
 }
 
-const cases = [
+interface CaseItem {
+  before: string;
+  after: string;
+  beforeAlt: string;
+  afterAlt: string;
+  beforeStyle?: React.CSSProperties;
+  title: string;
+  patient: string;
+  treatment: string;
+  duration: string;
+}
+
+const cases: CaseItem[] = [
   {
     before: 'https://blog.dentalchat.com/wp-content/uploads/2019/03/1-bad-teeth-image-adult-img.png',
     after: 'https://images.unsplash.com/photo-1658847075261-84ecf3e4ca56?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTh8fFRlZXRoJTIwYWZ0ZXJ0cmVhdG1lbnR8ZW58MHx8MHx8fDA%3D',
@@ -127,7 +141,7 @@ const cases = [
     duration: '8 Months',
   },
   {
-    before: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRVWyZBvDV_DkVX79bhmmjP9i4MHiqiPGrfzQ&s',
+    before: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRVWyZBvDV_DkV79bhmmjP9i4MHiqiPGrfzQ&s',
     after: 'https://drruchidental.com/wp-content/uploads/2025/11/What-Are-Dental-Veneers-and-How-Do-They-Work-3.jpg',
     beforeAlt: 'Smile with gaps before',
     afterAlt: 'Smile with veneers',
@@ -185,6 +199,7 @@ export default function BeforeAfter() {
               after={cases[activeCase].after}
               beforeAlt={cases[activeCase].beforeAlt}
               afterAlt={cases[activeCase].afterAlt}
+              beforeStyle={cases[activeCase].beforeStyle}
             />
           </div>
 
@@ -214,12 +229,17 @@ export default function BeforeAfter() {
 
             <div className="flex items-center gap-2 sm:gap-3">
               <div className="flex -space-x-1.5 sm:-space-x-2">
-                {[1, 2, 3].map((i) => (
+                {[
+                  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&h=100&q=80',
+                  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&h=100&q=80',
+                  'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=100&h=100&q=80'
+                ].map((url, i) => (
                   <img
                     key={i}
-                    src={`https://plus.unsplash.com/premium_photo-1671656349322-41de944d259b?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8bWVufGVufDB8fDB8fHww/${300 + i}/people?auto=compress&cs=tinysrgb&w=100`}
-                    alt="Verified patient"
+                    src={url}
+                    alt={`Verified patient ${i + 1}`}
                     className="w-6 h-6 sm:w-8 sm:h-8 rounded-full border-2 border-white dark:border-slate-800 object-cover"
+                    referrerPolicy="no-referrer"
                   />
                 ))}
               </div>

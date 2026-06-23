@@ -1,6 +1,7 @@
 import { Facebook, Instagram, Twitter, Linkedin, Youtube, ArrowRight } from 'lucide-react';
 import { useDarkMode } from '../App';
 import { clinicConfig } from '../config/clinicConfig';
+import clinicLogo from '../assets/images/regenerated_image_1782225273405.png';
 
 export default function Footer() {
   const { darkMode } = useDarkMode();
@@ -38,15 +39,21 @@ export default function Footer() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-8 sm:gap-10 lg:gap-12 mb-8 sm:mb-12">
           <div className="sm:col-span-2 lg:col-span-4">
             <div className="flex items-center gap-2.5 sm:gap-3 mb-4 sm:mb-6">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/30">
-                <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white p-0.5 shadow-md border border-teal-850/20 flex items-center justify-center flex-shrink-0 transition hover:scale-105 duration-200">
+                <img 
+                  src={clinicLogo} 
+                  alt="Sri Chaitanya Dental Care Logo" 
+                  className="w-full h-full object-contain rounded-full"
+                />
               </div>
-              <span className="text-xl sm:text-2xl font-bold text-white uppercase tracking-tight">
-                {clinicConfig.clinicName.replace(" DENTAL CARE", "")}
-                <span className="text-teal-400 block sm:inline sm:ml-1 text-sm sm:text-2xl">DENTAL CARE</span>
-              </span>
+              <div className="flex flex-col text-left font-sans">
+                <span className="text-[14px] sm:text-[18px] font-black tracking-tight leading-none text-white uppercase">
+                  SRI CHAITANYA
+                </span>
+                <span className="text-[8.5px] sm:text-[10px] font-extrabold text-teal-400 uppercase tracking-widest mt-1.5 leading-none">
+                  Multispeciality Dental Care
+                </span>
+              </div>
             </div>
 
             <p className="text-slate-400 text-sm sm:text-base mb-4 sm:mb-6 leading-relaxed">

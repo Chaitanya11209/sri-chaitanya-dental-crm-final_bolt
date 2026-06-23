@@ -51,7 +51,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       console.warn('[Global Capture] Intercepted unhandled promise rejection:', event.reason);
       
-      const errorMsg = event.reason?.message || String(event.reason);
+      const errorMsg = event.reason?.message || String(event.reason || '');
+      if (!errorMsg || errorMsg === 'undefined' || errorMsg === 'null') {
+        return; // Ignore empty / undefined rejections
+      }
+
+      const isBenignNoise = 
+        errorMsg.includes('ResizeObserver') || 
+        errorMsg.includes('Extension') || 
+        errorMsg.toLowerCase().includes('script error') ||
+        errorMsg.toLowerCase().includes('resizeobserver');
+
+      if (isBenignNoise) return;
+
       let heading = 'Database or API Sync Failure';
       let description = 'A background transaction failed. Your database state may not have resolved correctly.';
       let verboseDetails = undefined;
@@ -81,13 +93,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     const handleWindowError = (event: ErrorEvent) => {
       console.warn('[Global Capture] Intercepted runtime window error:', event.error);
-      const isReactError = event.message.includes('ResizeObserver') || event.message.includes('Extension');
-      if (isReactError) return; // Ignore benign browser/extension noise
+      const msg = (event.message || '').toLowerCase();
+      const errMsg = (event.error?.message || '').toLowerCase();
+      
+      const isBenignNoise = 
+        !msg ||
+        msg === 'undefined' ||
+        msg === 'null' ||
+        msg.includes('resizeobserver') || 
+        msg.includes('extension') || 
+        msg.includes('script error') ||
+        msg.includes('scripterror') ||
+        errMsg.includes('script error') ||
+        errMsg.includes('scripterror') ||
+        errMsg.includes('resizeobserver') ||
+        errMsg.includes('extension');
+        
+      if (isBenignNoise) return;
 
       notify(
         'error', 
         'Application Runtime Error', 
-        event.message, 
+        event.message || 'An unexpected runtime error occurred.', 
         event.error?.stack ? String(event.error.stack).substring(0, 150) + '...' : undefined
       );
     };

@@ -82,7 +82,8 @@ export function hasAccessToRoute(path: string, role: string): boolean {
       '/crm/followups',
       '/crm/labwork',
       '/crm/letters',
-      '/crm/doctors'
+      '/crm/doctors',
+      '/crm/3d-model'
     ];
     return listAllowed.some(p => normalizedPath === p);
   }

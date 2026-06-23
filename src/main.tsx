@@ -25,6 +25,7 @@ import Expenses from "./pages/crm/Expenses";
 import Inventory from "./pages/crm/Inventory";
 import Profile from "./pages/crm/Profile";
 import Setup from "./pages/crm/Setup";
+import ThreeDModel from "./pages/crm/ThreeDModel";
 import PatientPortal from "./pages/PatientPortal";
 import QueueDisplay from "./pages/QueueDisplay";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -78,6 +79,7 @@ function CRMRoutes() {
         <AdminRoute path="/crm/expenses" component={Expenses} />
         <Route path="/crm/inventory" component={Inventory} />
         <Route path="/crm/profile" component={Profile} />
+        <Route path="/crm/3d-model" component={ThreeDModel} />
         <AdminRoute path="/crm/setup" component={Setup} />
         <Route>
           <Redirect to="/crm/dashboard" />

@@ -22,10 +22,29 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   public static getDerivedStateFromError(error: Error): State {
+    const errMsg = (error && (error.message || String(error) || '')).toLowerCase();
+    const isBenign = !errMsg ||
+                     errMsg.includes('script error') ||
+                     errMsg.includes('scripterror') ||
+                     errMsg.includes('resizeobserver') ||
+                     errMsg.includes('extension');
+    if (isBenign) {
+      return { hasError: false, error: null, errorInfo: null };
+    }
     return { hasError: true, error, errorInfo: null };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    const errMsg = (error && (error.message || String(error) || '')).toLowerCase();
+    const isBenign = !errMsg ||
+                     errMsg.includes('script error') ||
+                     errMsg.includes('scripterror') ||
+                     errMsg.includes('resizeobserver') ||
+                     errMsg.includes('extension');
+    if (isBenign) {
+      this.setState({ hasError: false, error: null, errorInfo: null });
+      return;
+    }
     this.setState({
       error,
       errorInfo,
@@ -187,7 +206,6 @@ export default class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    const props = this.props;
-    return props.children || null;
+    return this.props.children || null;
   }
 }

@@ -176,28 +176,15 @@ export default function Patients() {
       return;
     }
 
-    // Validate appointment is not in the past
-    if (apptForm.date && !apptForm.isHistorical) {
+    let isPastDate = false;
+    if (apptForm.date) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const apptDate = new Date(apptForm.date);
       apptDate.setHours(0, 0, 0, 0);
-      
-      if (apptDate < today) {
-        notify('error', 'Date Validation Error', 'Cannot book appointments in the past.');
-        return;
-      }
-      
-      if (apptDate.getTime() === today.getTime() && apptForm.time) {
-        const [apptHours, apptMins] = apptForm.time.split(':').map(Number);
-        const currentHours = new Date().getHours();
-        const currentMins = new Date().getMinutes();
-        if (apptHours < currentHours || (apptHours === currentHours && apptMins < currentMins)) {
-          notify('error', 'Time Validation Error', 'Cannot book appointments at a past time today.');
-          return;
-        }
-      }
+      isPastDate = apptDate < today;
     }
+    const isActuallyHistorical = apptForm.isHistorical || isPastDate;
 
     setBookingLoading(true);
     try {
@@ -212,7 +199,7 @@ export default function Patients() {
         next_visit: apptForm.date,
         appointment_time: apptForm.time,
         notes: apptForm.notes.trim() || 'Booked via Clinical Quick Actions Menu',
-        status: apptForm.isHistorical ? 'Completed' : 'Pending',
+        status: isActuallyHistorical ? 'Completed' : 'Pending',
         doctor_id: selectedDoc.id,
         doctor_name: selectedDoc.name,
         amount_paid: 0,
@@ -252,27 +239,13 @@ export default function Patients() {
       return;
     }
 
-    // Validate follow-up is not in the past
+    let isPastDate = false;
     if (followUpForm.date) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const apptDate = new Date(followUpForm.date);
       apptDate.setHours(0, 0, 0, 0);
-      
-      if (apptDate < today) {
-        notify('error', 'Date Validation Error', 'Cannot schedule follow-up reviews in the past.');
-        return;
-      }
-      
-      if (apptDate.getTime() === today.getTime() && followUpForm.time) {
-        const [apptHours, apptMins] = followUpForm.time.split(':').map(Number);
-        const currentHours = new Date().getHours();
-        const currentMins = new Date().getMinutes();
-        if (apptHours < currentHours || (apptHours === currentHours && apptMins < currentMins)) {
-          notify('error', 'Time Validation Error', 'Cannot schedule follow-up reviews at a past time today.');
-          return;
-        }
-      }
+      isPastDate = apptDate < today;
     }
 
     setBookingLoading(true);
@@ -288,7 +261,7 @@ export default function Patients() {
         next_visit: followUpForm.date,
         appointment_time: followUpForm.time,
         notes: followUpForm.notes.trim() || 'Follow-up registered via Clinical Quick Actions Menu',
-        status: 'Pending',
+        status: isPastDate ? 'Completed' : 'Pending',
         doctor_id: selectedDoc.id,
         doctor_name: selectedDoc.name,
         amount_paid: 0,
@@ -649,6 +622,25 @@ export default function Patients() {
     if (!error) {
       setSelected({ ...selected, notes: notesStr });
       fetchPatients();
+    }
+  };
+
+  const updatePatientMetadata = async (updatedFields: Partial<any>) => {
+    if (!selected) return;
+    try {
+      const currentMeta = getPatientMetadata(selected);
+      const updatedMeta = {
+        ...currentMeta,
+        ...updatedFields
+      };
+      const notesStr = JSON.stringify(updatedMeta);
+      const { error } = await supabase.from('patients').update({ notes: notesStr }).eq('id', selected.id);
+      if (error) throw error;
+      setSelected({ ...selected, notes: notesStr });
+      fetchPatients();
+    } catch (err: any) {
+      console.error('[Patients] Error updating patient metadata:', err);
+      notify('error', 'Update Failed', err.message || 'Could not update records.');
     }
   };
 
@@ -1480,17 +1472,17 @@ export default function Patients() {
         <table class="header-table">
           <tr>
             <td>
-              <div class="clinic-title">Sri Chaitanya Dental Care</div>
+              <div class="clinic-title">SRI CHAITANYA MULTISPECIALITY DENTAL CARE</div>
               <div class="clinic-tagline">Advanced Dental & Implant Centre</div>
               <div class="clinic-meta">
-                Ph: <strong>+91 8317575165</strong> &nbsp;|&nbsp; Email: <strong>contact@srichaitanyadental.com</strong><br>
+                Ph: <strong>+91 83175 75165</strong> &nbsp;|&nbsp; Email: <strong>srichaitanyadentalcare9@gmail.com</strong><br>
                 Reg No: <strong>HYD/DENT/2026/0894</strong> &nbsp;|&nbsp; GSTIN: <strong>36AAQCS4501D1Z2</strong>
               </div>
             </td>
             <td class="header-right">
-              No.10, Near Ashiana Function Hall,<br>
-              Banjara Hills, HYDERABAD,<br>
-              TELANGANA, INDIA - 500034
+              G4, Lakeview Apartments,<br>
+              Bandam Kommu, Ameenpur,<br>
+              Hyderabad, Telangana - 502032
             </td>
           </tr>
         </table>
@@ -1662,8 +1654,8 @@ export default function Patients() {
       // Header (Black & White, crisp)
       doc.setTextColor(0, 0, 0);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text('SRI CHAITANYA DENTAL CARE', 15, 20);
+      doc.setFontSize(16);
+      doc.text('SRI CHAITANYA MULTISPECIALITY DENTAL CARE', 15, 20);
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
@@ -1672,15 +1664,15 @@ export default function Patients() {
       doc.setFontSize(8);
       doc.setTextColor(60, 60, 60);
       doc.text([
-        'Ph: +91 8317575165  |  Email: contact@srichaitanyadental.com',
+        'Ph: +91 83175 75165  |  Email: srichaitanyadentalcare9@gmail.com',
         'Reg No: HYD/DENT/2026/0894  |  GSTIN: 36AAQCS4501D1Z2'
       ], 15, 30);
 
       doc.setFontSize(8);
       doc.text([
-        'No.10, Near Ashiana Function Hall,',
-        'Banjara Hills, Hyderabad,',
-        'Telangana, India - 500034'
+        'G4, Lakeview Apartments,',
+        'Bandam Kommu, Ameenpur,',
+        'Hyderabad, Telangana - 502032'
       ], 195, 20, { align: 'right' });
 
       // Title line
@@ -2938,19 +2930,19 @@ export default function Patients() {
       const totalRevenueValue = totalCollected + outstandingDues;
 
       // Header block with SCDC clinical branding
-      doc.setTextColor(4, 120, 87); // #047857 Emerald Teal
-      doc.setFontSize(20);
+      doc.setTextColor(15, 110, 110); // Brand Premium Teal #0F6E6E
+      doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text('Sri Chaitanya Multispeciality Dental Care', 15, 20);
+      doc.text('SRI CHAITANYA MULTISPECIALITY DENTAL CARE', 15, 20);
       
-      doc.setTextColor(110, 87, 234); // Purple Accent
+      doc.setTextColor(29, 78, 216); // Brand Secondary Blue #1D4ED8
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
       doc.text('Dr. J. Durga Bhavani, Cosmetic Dental Surgeon', 15, 26);
       
       doc.setTextColor(100, 116, 139);
       doc.setFont('helvetica', 'italic');
-      doc.text('"We Care For Your Smile"', 15, 31);
+      doc.text('"We Care Your Smile"', 15, 31);
       
       doc.setFont('helvetica', 'normal');
       doc.text('Ameenpur, Hyderabad  |  Ph: +91 8317575165', 15, 37);
@@ -2961,8 +2953,8 @@ export default function Patients() {
       doc.setFont('helvetica', 'bold');
       doc.text('PATIENT REGISTRY SUMMARY', 195, 20, { align: 'right' });
 
-      // Teal Accent divider
-      doc.setDrawColor(4, 120, 87);
+      // Brand Teal divider
+      doc.setDrawColor(15, 110, 110);
       doc.setLineWidth(0.8);
       doc.line(15, 42, 195, 42);
 
@@ -3004,7 +2996,7 @@ export default function Patients() {
         body: summaryBody,
         theme: 'striped',
         margin: { left: 15, right: 15 },
-        headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+        headStyles: { fillColor: [15, 110, 110], textColor: [255, 255, 255] },
         styles: { fontSize: 9 }
       });
 
@@ -3034,7 +3026,7 @@ export default function Patients() {
         body: historyBody.length > 0 ? historyBody : [['-', '-', 'No appointments logged yet', '-', '-', '-']],
         theme: 'grid',
         margin: { left: 15, right: 15 },
-        headStyles: { fillColor: [110, 87, 234], textColor: [255, 255, 255] },
+        headStyles: { fillColor: [29, 78, 216], textColor: [255, 255, 255] },
         styles: { fontSize: 8.5 }
       });
 
@@ -4354,6 +4346,30 @@ export default function Patients() {
                     appointments={patientAppointments}
                     treatments={patientTreatments}
                     prescriptions={getPatientMetadata(selected).prescriptions || []}
+                    uploadedImages={getPatientMetadata(selected).images || []}
+                    onUploadImage={async (url, name, category, notes) => {
+                      const currentImages = getPatientMetadata(selected).images || [];
+                      const newImage = {
+                        id: `img-${Date.now()}`,
+                        url,
+                        name,
+                        category,
+                        notes,
+                        date: new Date().toISOString()
+                      };
+                      await updatePatientMetadata({
+                        images: [...currentImages, newImage]
+                      });
+                      notify('success', 'Image Uploaded', 'Clinical radiograph linked to patient case sheet.');
+                    }}
+                    onDeleteImage={async (imageId) => {
+                      const currentImages = getPatientMetadata(selected).images || [];
+                      const filteredImages = currentImages.filter((img: any) => img.id !== imageId);
+                      await updatePatientMetadata({
+                        images: filteredImages
+                      });
+                      notify('success', 'Image Deleted', 'Attachment removed from case repository.');
+                    }}
                   />
 
                   {/* Upgraded Treatment History Ledger */}

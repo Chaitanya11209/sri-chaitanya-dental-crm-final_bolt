@@ -91,7 +91,7 @@ export default function Hero() {
               </a>
 
               <a
-                href="https://wa.me/918520851209"
+                href={`https://wa.me/918520851209?text=${encodeURIComponent("Hello Sri Chaitanya Dental Care, I would like to book a dental consultation.")}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`group inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 sm:py-4 text-sm sm:text-base font-semibold rounded-xl sm:rounded-2xl border-2 transition-all duration-300 active:scale-[0.98] ${darkMode
@@ -137,13 +137,14 @@ export default function Hero() {
             </div>
           </div>
 
-          <div className="relative hidden lg:block">
+          <div className="relative mt-12 lg:mt-0">
             <div className="relative z-10">
               <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl shadow-slate-900/20">
                 <img
-                  src="/hero-img.avif"
+                  src={`${import.meta.env.BASE_URL}hero-img.avif`}
                   alt="Modern Dental Clinic"
-                  className="w-full h-auto sm:h-[600px] object-cover"
+                  className="w-full h-auto sm:h-[450px] lg:h-[600px] object-cover"
+                  referrerPolicy="no-referrer"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
               </div>

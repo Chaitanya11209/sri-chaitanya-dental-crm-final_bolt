@@ -74,14 +74,6 @@ export default function Appointment() {
     } else if (name === 'date') {
       if (!value) {
         error = 'Preferred Date is required.';
-      } else {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const selected = new Date(value);
-        selected.setHours(0, 0, 0, 0);
-        if (selected < today) {
-          error = 'Appointment date cannot be in the past.';
-        }
       }
     } else if (name === 'time') {
       if (!value) {
@@ -447,7 +439,6 @@ Please contact the patient to confirm the appointment.`;
       value={formData.date}
       onChange={handleInputChange}
       required
-      min={new Date().toISOString().split('T')[0]}
       className={`w-full h-14 px-4 text-sm rounded-2xl border transition-all duration-200 focus:ring-2 focus:ring-transparent ${
         errors.date
           ? 'border-red-500 focus:ring-red-500 focus:border-red-500 bg-red-50/50 dark:bg-red-950/20'

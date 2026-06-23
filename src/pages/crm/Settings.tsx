@@ -346,7 +346,7 @@ export default function Settings() {
       } else if (activeTab === 'whatsapp') {
         const DEFAULT_SIG = `Thanks & Regards,
 
-Sri Chaitanya Dental Care
+Sri Chaitanya Multispeciality Dental Care
 Ameenpur, Hyderabad
 
 📞 8317575165
@@ -354,7 +354,7 @@ Ameenpur, Hyderabad
 📍 Location:
 https://maps.app.goo.gl/LZxFuzZ8ZuHJUjrt7
 
-"We Care For Your Smile"`;
+"We Care Your Smile"`;
         setClinicSignature(DEFAULT_SIG);
         setWhatsappTemplates(DEFAULT_WHATSAPP_TEMPLATES);
         saveClinicSignature(DEFAULT_SIG);

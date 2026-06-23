@@ -333,31 +333,31 @@ export default function Billing() {
       }
 
       // Header block with clinical colors (Sri Chaitanya Multispeciality Dental Care CRM)
-      doc.setTextColor(4, 120, 87); // #047857 Emerald Green
-      doc.setFontSize(22);
+      doc.setTextColor(15, 110, 110); // Brand Premium Teal #0F6E6E
+      doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text('Sri Chaitanya Multispeciality Dental Care', 15, 20);
+      doc.text('SRI CHAITANYA MULTISPECIALITY DENTAL CARE', 15, 20);
       
-      doc.setTextColor(110, 87, 234); // Purple Accent
-      doc.setFontSize(10);
+      doc.setTextColor(29, 78, 216); // Brand Secondary Blue #1D4ED8
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
       doc.text('Dr. J. Durga Bhavani, Cosmetic Dental Surgeon', 15, 26);
       
       doc.setTextColor(100, 116, 139);
       doc.setFont('helvetica', 'italic');
-      doc.text('"We Care For Your Smile"', 15, 31);
+      doc.text('"We Care Your Smile"', 15, 31);
       
       doc.setFont('helvetica', 'normal');
       doc.text('Ameenpur, Hyderabad  |  Ph: +91 8317575165', 15, 37);
 
       // INVOICE text on right
       doc.setTextColor(30, 41, 59);
-      doc.setFontSize(18);
+      doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.text('BILL CUM RECEIPT', 195, 20, { align: 'right' });
 
-      // Emerald Accent thin divider
-      doc.setDrawColor(4, 120, 87);
+      // Brand Teal thin divider
+      doc.setDrawColor(15, 110, 110);
       doc.setLineWidth(0.8);
       doc.line(15, 42, 195, 42);
 
@@ -371,7 +371,7 @@ export default function Billing() {
       doc.text(`Attending Surgeon: ${a.doctor_name || 'Dr. Sri Chaitanya'}`, 15, 68);
 
       // Patient demographics table format
-      doc.setTextColor(4, 120, 87);
+      doc.setTextColor(15, 110, 110);
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       doc.text('Patient Demographics / Profile', 110, 50);
@@ -426,7 +426,7 @@ export default function Billing() {
           ['', '', '', '', 'Balance Due', `Rs. ${balDueVal.toLocaleString('en-IN')}`]
         ],
         theme: 'grid',
-        headStyles: { fillColor: [4, 120, 87], textColor: [255, 255, 255] },
+        headStyles: { fillColor: [15, 110, 110], textColor: [255, 255, 255] },
         footStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold' },
         columnStyles: {
           2: { halign: 'center' },

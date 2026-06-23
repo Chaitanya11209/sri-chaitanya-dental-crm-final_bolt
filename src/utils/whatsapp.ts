@@ -12,7 +12,7 @@ ${clinicConfig.address}
 📍 Location:
 ${clinicConfig.googleReviewUrl}
 
-"We Care For Your Smile"`;
+"We Care Your Smile"`;
 
 export let CLINIC_SIGNATURE = DEFAULT_SIGNATURE;
 

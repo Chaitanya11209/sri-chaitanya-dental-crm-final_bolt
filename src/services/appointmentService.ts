@@ -26,14 +26,6 @@ export const createAppointment = async (formData: any) => {
   }
   if (!formData.date) {
     throw new Error('Appointment date is required.');
-  } else {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(formData.date);
-    selected.setHours(0, 0, 0, 0);
-    if (selected < today) {
-      throw new Error('Appointment date cannot be in the past.');
-    }
   }
   if (!formData.time) {
     throw new Error('Preferred time is required.');

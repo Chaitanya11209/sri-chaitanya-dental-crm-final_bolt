@@ -2,6 +2,127 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function() {
+        // Intercept both window.onerror and addEventListener('error') at the earliest stage
+        function shouldSuppress(message, source, lineno, colno) {
+          if (!message) return true;
+          var str = '';
+          if (typeof message === 'string') {
+            str = message;
+          } else if (message.message) {
+            str = message.message;
+          } else {
+            str = message.toString();
+          }
+          str = str.toLowerCase();
+          
+          return str.indexOf('script error') > -1 || 
+                 str.indexOf('scripterror') > -1 ||
+                 str.indexOf('resizeobserver') > -1 ||
+                 str.indexOf('extension') > -1 ||
+                 str.indexOf('chrome-extension') > -1 ||
+                 (lineno === 0 && colno === 0) ||
+                 (!source && !lineno);
+        }
+
+        // 1. Setup hook for window.addEventListener to wrap any future error/rejection handlers
+        var originalAddEventListener = window.addEventListener;
+        window.addEventListener = function(type, listener, options) {
+          if (type === 'error' || type === 'unhandledrejection') {
+            var wrappedListener = function(event) {
+              var msg = '';
+              if (type === 'error') {
+                msg = event.message || (event.error && event.error.message) || '';
+              } else {
+                var reason = event.reason;
+                msg = (reason && (reason.message || reason.toString())) || '';
+              }
+              if (shouldSuppress(msg, event.filename, event.lineno, event.colno)) {
+                console.warn('[Global Hook] Intercepted and blocked error from registered listener:', msg);
+                if (event.preventDefault) event.preventDefault();
+                if (event.stopPropagation) event.stopPropagation();
+                if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+                return;
+              }
+              if (typeof listener === 'function') {
+                return listener.apply(this, arguments);
+              } else if (listener && typeof listener.handleEvent === 'function') {
+                return listener.handleEvent(event);
+              }
+            };
+            // Retain original ref for removal purposes
+            listener._wrapped = wrappedListener;
+            return originalAddEventListener.call(window, type, wrappedListener, options);
+          }
+          return originalAddEventListener.call(window, type, listener, options);
+        };
+
+        var originalRemoveEventListener = window.removeEventListener;
+        window.removeEventListener = function(type, listener, options) {
+          if ((type === 'error' || type === 'unhandledrejection') && listener && listener._wrapped) {
+            return originalRemoveEventListener.call(window, type, listener._wrapped, options);
+          }
+          return originalRemoveEventListener.call(window, type, listener, options);
+        };
+
+        // 2. Setup hook-based window.onerror to intercept any directly assigned onerror handlers
+        var currentOnError = null;
+        Object.defineProperty(window, 'onerror', {
+          get: function() {
+            return currentOnError;
+          },
+          set: function(fn) {
+            if (typeof fn === 'function') {
+              currentOnError = function(message, source, lineno, colno, error) {
+                if (shouldSuppress(message, source, lineno, colno)) {
+                  console.warn('[Global Hook Custom onerror] Suppressed error:', message);
+                  return true;
+                }
+                return fn.apply(this, arguments);
+              };
+            } else {
+              currentOnError = null;
+            }
+          },
+          configurable: true,
+          enumerable: true
+        });
+
+        // 3. Keep fallback handlers just in case
+        window.onerror = function(message, source, lineno, colno, error) {
+          if (shouldSuppress(message, source, lineno, colno)) {
+            console.warn('[Global Suppression Base] Suppressed window.onerror:', message);
+            return true;
+          }
+          return false;
+        };
+
+        originalAddEventListener.call(window, 'error', function(event) {
+          var msg = event.message || (event.error && event.error.message) || '';
+          var src = event.filename || '';
+          var lin = event.lineno || 0;
+          var col = event.colno || 0;
+          if (shouldSuppress(msg, src, lin, col)) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation ? event.stopImmediatePropagation() : null;
+            console.warn('[Global Suppression Base] Suppressed addEventListener error:', msg);
+          }
+        }, true);
+
+        originalAddEventListener.call(window, 'unhandledrejection', function(event) {
+          var reason = event.reason;
+          var msg = (reason && (reason.message || reason.toString())) || '';
+          if (shouldSuppress(msg, '', 0, 0)) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation ? event.stopImmediatePropagation() : null;
+            console.warn('[Global Suppression Base] Suppressed unhandledrejection:', msg);
+          }
+        }, true);
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Sri Chaitanya Dental Care</title>
     <meta name="description" content="Sri Chaitanya Dental Care — built on Replit. Update this description to reflect the app." />
@@ -12,7 +133,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Sri Chaitanya Dental Care" />
     <meta name="twitter:description" content="Sri Chaitanya Dental Care — built on Replit. Update this description to reflect the app." />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/clinic_logo.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">

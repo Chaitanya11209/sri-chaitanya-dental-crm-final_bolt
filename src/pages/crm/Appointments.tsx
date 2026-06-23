@@ -121,7 +121,7 @@ ${clinicConfig.address}
 📍 Location:
 ${clinicConfig.googleReviewUrl}
 
-"We Care For Your Smile"`;
+"We Care Your Smile"`;
 
   const replaced = template
     .replace(/\[Name\]/gi, name)
@@ -1034,28 +1034,15 @@ Sri Chaitanya Dental Care`;
       return;
     }
 
-    // Validate appointment is not in the past
-    if (form.next_visit && !isHistorical) {
+    let isPastDate = false;
+    if (form.next_visit) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const apptDate = new Date(form.next_visit);
       apptDate.setHours(0, 0, 0, 0);
-      
-      if (apptDate < today) {
-        notify('error', 'Date Validation Error', 'Cannot book appointments in the past.');
-        return;
-      }
-      
-      if (apptDate.getTime() === today.getTime() && form.appointment_time) {
-        const [apptHours, apptMins] = form.appointment_time.split(':').map(Number);
-        const currentHours = new Date().getHours();
-        const currentMins = new Date().getMinutes();
-        if (apptHours < currentHours || (apptHours === currentHours && apptMins < currentMins)) {
-          notify('error', 'Time Validation Error', 'Cannot book appointments at a past time today.');
-          return;
-        }
-      }
+      isPastDate = apptDate < today;
     }
+    const isActuallyHistorical = isHistorical || isPastDate;
 
     let previousAppointments: any[] = [];
     setSaving(true);
@@ -1120,7 +1107,7 @@ Sri Chaitanya Dental Care`;
         patient_id: matchedPatientId || null // The DB Trigger will auto-create patient if null
       };
 
-      if (isHistorical) {
+      if (isActuallyHistorical) {
         payload.status = 'Completed';
       }
 
@@ -1132,7 +1119,7 @@ Sri Chaitanya Dental Care`;
       const optimisticPayload = {
         id: tempId,
         ...payload,
-        status: isHistorical ? 'Completed' : (editingAppt ? (editingAppt.status || 'Pending') : 'Pending'),
+        status: isActuallyHistorical ? 'Completed' : (editingAppt ? (editingAppt.status || 'Pending') : 'Pending'),
         created_at: new Date().toISOString()
       };
 
@@ -1179,7 +1166,7 @@ Sri Chaitanya Dental Care`;
         broadcastQueueChange('new-patient', payload.name);
       }
 
-      if (!isHistorical) {
+      if (!isActuallyHistorical) {
         // Prepare WhatsApp Notification engine double payload
         setSavedWhatsAppAlerts({
           patientName: form.name,

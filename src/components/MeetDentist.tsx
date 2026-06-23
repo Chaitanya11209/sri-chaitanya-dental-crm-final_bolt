@@ -21,9 +21,10 @@ export default function MeetDentist() {
 
               <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl shadow-teal-500/20">
                 <img
-                  src="/doctor.jpg"
+                  src={`${import.meta.env.BASE_URL}doctor.jpg`}
                   alt="Dr. Jupalli Durga Bhavani - MDS Oral & Maxillofacial Surgery"
                   className="w-full h-80 sm:h-96 lg:h-[600px] object-cover object-top"
+                  referrerPolicy="no-referrer"
                 />
               </div>
 

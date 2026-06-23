@@ -6,7 +6,7 @@ import {
   ChevronRight, Building2, Shield, UserCircle, UserCog, TrendingUp, FolderDown, Settings,
   Search, X, Loader2, Calendar, Phone, Mail, MapPin, CheckCircle2, AlertCircle, RefreshCw, HeartPulse,
   Clock, History, Tv, Microscope, Award, Package, MessageSquare, CalendarCheck, Moon, Sun,
-  Cloud, CloudOff
+  Cloud, CloudOff, Layers
 } from 'lucide-react';
 import { logout, getCurrentUser, isAdmin, getRole, isLoggedIn, validateSession, hasAccessToRoute } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
@@ -193,6 +193,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
     { path: '/crm/billing',      label: 'Billing / Invoices', icon: DollarSign },
     { path: '/crm/labwork',      label: 'Lab Work',          icon: Microscope },
     { path: '/crm/patients?view=chart', label: 'Dental Chart', icon: Award },
+    { path: '/crm/3d-model',     label: '3D Model',          icon: Layers },
     { path: '/crm/letters',      label: 'Letters',           icon: FileText },
     { path: '/crm/reports',      label: 'Reports',           icon: TrendingUp },
     { path: '/crm/setup',        label: 'Settings',          icon: Settings },
@@ -412,11 +413,11 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
         {/* Logo Section */}
         <div className="px-5 py-4 border-b border-[#E5E7EB] dark:border-slate-800 flex items-center justify-between">
           <Link href="/crm/dashboard" className="cursor-pointer">
-            <DentalLogo size={18} textColor="text-[#2F63E0] dark:text-[#38bdf8]" />
+            <DentalLogo size={18} textColor="text-[#0F6E6E] dark:text-[#14B8A6]" />
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-[#94A3B8] hover:text-[#2F63E0] transition"
+            className="lg:hidden text-[#94A3B8] hover:text-[#0F6E6E] transition"
           >
             <ChevronRight className="rotate-180 text-[#94A3B8]" size={16} />
           </button>
@@ -435,7 +436,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3.5 px-4 py-2.5 rounded-xl text-xs font-medium tracking-wide transition-all select-none cursor-pointer duration-150
                   ${isActive
-                    ? 'bg-[#2F63E0] text-white font-semibold shadow-sm'
+                    ? 'bg-[#0F6E6E] text-white font-semibold shadow-sm'
                     : 'text-[#6B7280] dark:text-slate-400 hover:bg-[#F3F4F6]/75 dark:hover:bg-slate-800/50 hover:text-[#111827] dark:hover:text-white'
                   }`}
               >
@@ -731,7 +732,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
               <div className="mt-6">
                 <Link
                   href="/crm/dashboard"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#2F63E0] hover:bg-[#1E4FCC] active:scale-95 transition-all shadow-sm"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#0F6E6E] hover:bg-[#0c5959] active:scale-95 transition-all shadow-sm"
                 >
                   Go to Dashboard
                 </Link>
@@ -758,11 +759,11 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   key={item.path}
                   href={item.path}
                   className={`flex flex-col items-center justify-center gap-0.5 flex-1 py-1 h-full select-none cursor-pointer text-center transition-all ${
-                    isActive ? 'text-[#2F63E0] dark:text-sky-400 font-bold font-sans' : 'text-[#6B7280] dark:text-slate-400 active:scale-95'
+                    isActive ? 'text-[#0F6E6E] dark:text-[#14B8A6] font-bold font-sans' : 'text-[#6B7280] dark:text-slate-400 active:scale-95'
                   }`}
                 >
-                  <div className={`p-1.5 rounded-xl transition-all duration-200 ${isActive ? 'bg-[#2F63E0]/10 dark:bg-sky-400/10 scale-105' : 'bg-transparent'}`}>
-                    <Icon size={16} className={isActive ? 'text-[#2F63E0] dark:text-sky-400' : 'text-[#6B7280] dark:text-slate-400'} />
+                  <div className={`p-1.5 rounded-xl transition-all duration-200 ${isActive ? 'bg-[#0F6E6E]/10 dark:bg-[#14B8A6]/10 scale-105' : 'bg-transparent'}`}>
+                    <Icon size={16} className={isActive ? 'text-[#0F6E6E] dark:text-[#14B8A6]' : 'text-[#6B7280] dark:text-slate-400'} />
                   </div>
                   <span className="text-[9px] tracking-wide font-semibold">{item.label}</span>
                 </Link>

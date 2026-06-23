@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Menu, X, Phone, Moon, Sun } from 'lucide-react';
 import { useDarkMode } from '../App';
 import { clinicConfig } from '../config/clinicConfig';
+import clinicLogo from '../assets/images/regenerated_image_1782225273405.png';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -45,19 +46,22 @@ export default function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16 sm:h-20">
-          <a href="#home" className="flex items-center gap-2 sm:gap-3 z--1">
-            <div className="w-9 h-9 sm:w-11 sm:h-11 bg-gradient-to-br from-teal-500 to-teal-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/30">
-              <svg className="w-4 h-4 sm:w-6 sm:h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2a4 4 0 0 0-4 4c0 .82.11 1.48.33 1.83.33.5.67.67.67 1.17 0 1-.61 1.54-1.22 2.6A9 9 0 0 0 7 16c0 3 2 5 4.5 5 .5 0 .9-.2 1.5-.5.6.3 1 .5 1.5.5 2.5 0 4.5-2 4.5-5a9 9 0 0 0-.78-4.4c-.61-1.06-1.22-1.6-1.22-2.6 0-.5.34-.67.67-1.17.22-.35.33-1 .33-1.83a4 4 0 0 0-4-4h-2z" />
-              </svg>
+          <a href="#home" className="flex items-center gap-2.5 sm:gap-3 group">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white p-0.5 shadow-md border border-teal-100 flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-teal-500/10 group-hover:border-teal-300 dark:group-hover:border-teal-400 ring-2 ring-transparent group-hover:ring-teal-500/20">
+              <img 
+                src={clinicLogo} 
+                alt="Sri Chaitanya Dental Care Logo" 
+                className="w-full h-full object-contain rounded-full transition-transform duration-500 group-hover:rotate-12"
+              />
             </div>
-     <span className={`text-sm sm:text-lg lg:text-xl font-bold leading-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-  SRI CHAITANYA MULTISPECIALITY
-  <br />
-  <span className="block text-center text-teal-600">
-    DENTAL CARE
-  </span>
-</span>
+            <div className="flex flex-col text-left font-sans">
+              <span className={`text-[13px] sm:text-[16px] lg:text-[18px] font-black tracking-tight leading-none ${darkMode ? 'text-white' : 'text-slate-900'} uppercase`}>
+                SRI CHAITANYA
+              </span>
+              <span className="text-[8px] sm:text-[9.5px] lg:text-[10px] font-extrabold text-[#0F6E6E] dark:text-teal-400 uppercase tracking-widest mt-1 leading-none">
+                Multispeciality Dental Care
+              </span>
+            </div>
           </a>
 
           <div className="hidden lg:flex items-center gap-6 xl:gap-8">
@@ -86,10 +90,10 @@ export default function Navbar() {
 
             <a
               href={`tel:${clinicConfig.phone.replace(/\s+/g, '')}`}
-              className="hidden xl:flex items-center gap-2 text-slate-700 dark:text-slate-300 hover:text-teal-600 transition-colors duration-200"
+              className="hidden lg:flex items-center gap-2 text-slate-700 dark:text-slate-300 hover:text-teal-600 transition-colors duration-200"
             >
-              <Phone className="w-4 h-4" />
-              <span className="font-medium text-sm">{clinicConfig.phone}</span>
+              <Phone className="w-4 h-4 text-teal-600" />
+              <span className="font-semibold text-sm tracking-wide whitespace-nowrap">{clinicConfig.phone}</span>
             </a>
 
             <a
