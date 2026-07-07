@@ -428,3 +428,92 @@ CREATE TRIGGER trg_sync_patient_on_appointment_change
   AFTER INSERT OR UPDATE OF next_visit, status, treatment, patient_id OR DELETE ON appointments
   FOR EACH ROW
   EXECUTE FUNCTION sync_patient_on_appointment_change();
+
+
+-- ============================================================
+-- FAMILY GROUPS AND PATIENT MANAGEMENT ENHANCEMENTS
+-- ============================================================
+
+-- Create family_groups table for formal family management
+CREATE TABLE IF NOT EXISTS family_groups (
+  id BIGSERIAL PRIMARY KEY,
+  family_code TEXT UNIQUE,
+  family_name TEXT,
+  primary_contact_phone TEXT,
+  primary_contact_email TEXT,
+  address TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add family_group_id to patients table
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS family_group_id BIGINT REFERENCES family_groups(id) ON DELETE SET NULL;
+
+-- Add internal_notes column for staff-only notes (separate from patient notes)
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS internal_notes TEXT DEFAULT '';
+
+-- Add date_of_birth column for age calculation
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+
+-- Add blood_group column for easier querying
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS blood_group TEXT;
+
+-- Add occupation column
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS occupation TEXT;
+
+-- Add last_recall_date for tracking
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS last_recall_date DATE;
+
+-- Create indexes for new columns
+CREATE INDEX IF NOT EXISTS idx_patients_family_group_id ON patients(family_group_id);
+CREATE INDEX IF NOT EXISTS idx_patients_blood_group ON patients(blood_group);
+CREATE INDEX IF NOT EXISTS idx_family_groups_code ON family_groups(family_code);
+CREATE INDEX IF NOT EXISTS idx_family_groups_phone ON family_groups(primary_contact_phone);
+
+-- RLS policies for family_groups
+ALTER TABLE family_groups ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "authenticated full access - family_groups"
+  ON family_groups FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "anon full access - family_groups"
+  ON family_groups FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- Trigger to auto-generate family code
+CREATE OR REPLACE FUNCTION generate_family_code()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.family_code IS NULL OR NEW.family_code = '' THEN
+    NEW.family_code := 'FAM-' || COALESCE((SELECT COALESCE(MAX(id), 0) + 1 FROM family_groups), 1);
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_generate_family_code ON family_groups;
+CREATE TRIGGER trg_generate_family_code
+  BEFORE INSERT ON family_groups
+  FOR EACH ROW
+  EXECUTE FUNCTION generate_family_code();
+
+-- Trigger to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_update_family_groups_updated_at ON family_groups;
+CREATE TRIGGER trg_update_family_groups_updated_at
+  BEFORE UPDATE ON family_groups
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at();
+
+-- Add comments
+COMMENT ON TABLE family_groups IS 'Formal family grouping for patients sharing contact information or household';
+COMMENT ON COLUMN patients.family_group_id IS 'Reference to family group for household/family management';
+COMMENT ON COLUMN patients.internal_notes IS 'Staff-only notes, not visible to patients';
+COMMENT ON COLUMN patients.blood_group IS 'Patient blood type for medical safety';

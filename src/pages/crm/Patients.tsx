@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import DentalChart, { type ToothStatus } from '../../components/DentalChart';
 import TimelineView from '../../components/TimelineView';
 import { useLocation } from 'wouter';
@@ -27,11 +27,11 @@ import {
   CheckCircle2, UserCheck, Clock, Stethoscope, AlertCircle, DollarSign,
   FileText, Users, UserPlus, Bell, RotateCcw, ArrowRight, Mail,
   Activity, Eye, MessageCircle, MessageSquare, CheckSquare, ClipboardList, CreditCard, Wallet,
-  Printer, Download, Trash2, Camera, Send, RefreshCw
+  Printer, Download, Trash2, Camera, Send, RefreshCw, Image as ImageIcon, FolderOpen, Maximize2, Filter
 } from 'lucide-react';
 
 type PatientStatus = 'Registered' | 'Waiting' | 'In Treatment' | 'Follow-up Required' | 'Completed';
-type TabType = 'demographics' | 'timeline' | 'dental_chart' | 'appointments' | 'treatments' | 'prescriptions' | 'followups' | 'billing';
+type TabType = 'demographics' | 'timeline' | 'dental_chart' | 'documents' | 'appointments' | 'treatments' | 'prescriptions' | 'followups' | 'billing';
 
 interface Patient {
   id: number;
@@ -48,6 +48,12 @@ interface Patient {
   next_visit_date: string | null;
   treatment_summary: string | null;
   created_at: string;
+  family_group_id?: number | null;
+  internal_notes?: string;
+  blood_group?: string;
+  occupation?: string;
+  date_of_birth?: string;
+  last_recall_date?: string | null;
 }
 
 interface PatientAppointment {
@@ -321,7 +327,10 @@ export default function Patients() {
       dental_chart: {} as Record<string, string>,
       prescriptions: [] as any[],
       dob: '',
-      gender: ''
+      gender: '',
+      internal_notes: '',
+      recall_history: [] as { date: string; type: string; notes: string; sent_by: string }[],
+      images: [] as any[]
     };
     try {
       if (p.notes && p.notes.startsWith('{') && p.notes.endsWith('}')) {
@@ -344,6 +353,9 @@ export default function Patients() {
           prescriptions: [] as any[],
           dob: '',
           gender: '',
+          internal_notes: '',
+          recall_history: [] as { date: string; type: string; notes: string; sent_by: string }[],
+          images: [] as any[],
           ...parsedObject
         };
       }
@@ -381,7 +393,10 @@ export default function Patients() {
       dental_chart: {} as Record<string, string>,
       prescriptions: [] as any[],
       dob: parsedDob,
-      gender: p.gender || ''
+      gender: p.gender || '',
+      internal_notes: '',
+      recall_history: [] as { date: string; type: string; notes: string; sent_by: string }[],
+      images: [] as any[]
     };
   };
 
@@ -407,7 +422,9 @@ export default function Patients() {
     insurance_policy_num: '',
     insurance_expiry: '',
     avatar: 'avatar1',
-    dob: ''
+    dob: '',
+    internal_notes: '',
+    recall_history: [] as { date: string; type: string; notes: string; sent_by: string }[]
   });
 
   const [rxForm, setRxForm] = useState({
@@ -438,7 +455,8 @@ export default function Patients() {
       avatar: profileForm.avatar,
       dob: profileForm.dob,
       gender: profileForm.gender,
-      age: updatedAge
+      age: updatedAge,
+      internal_notes: profileForm.internal_notes
     };
 
     const notesStr = JSON.stringify(updatedMeta);
@@ -3346,12 +3364,54 @@ export default function Patients() {
               </button>
             </div>
 
+            {/* MEDICAL ALERTS BANNER - Shows allergies and critical conditions */}
+            {(() => {
+              const meta = getPatientMetadata(selected);
+              const hasAllergies = meta.allergies && meta.allergies.length > 0;
+              const hasMedicalConditions = meta.medical_history && meta.medical_history.length > 0;
+              const criticalConditions = ['Diabetes', 'Heart Disease', 'Hypertension', 'Bleeding Disorder', 'Pacemaker'];
+              const hasCritical = meta.medical_history?.some((c: string) =>
+                criticalConditions.some(crit => c.toLowerCase().includes(crit.toLowerCase()))
+              );
+              const bloodGroup = meta.blood_group;
+
+              if (!hasAllergies && !hasMedicalConditions && !bloodGroup) return null;
+
+              return (
+                <div className={`px-5 py-3 border-b ${hasCritical ? 'bg-red-50 border-red-100' : hasAllergies ? 'bg-amber-50 border-amber-100' : 'bg-blue-50 border-blue-100'}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {hasAllergies && (
+                      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${hasCritical ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <AlertCircle size={12} className="animate-pulse" />
+                        <span>ALLERGIES:</span>
+                        <span className="font-normal">{meta.allergies.join(', ')}</span>
+                      </div>
+                    )}
+                    {bloodGroup && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700">
+                        <span className="text-red-500 font-black">Blood:</span>
+                        <span>{bloodGroup}</span>
+                      </div>
+                    )}
+                    {hasMedicalConditions && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-100 text-blue-700">
+                        <Activity size={12} />
+                        <span>History:</span>
+                        <span className="font-normal">{meta.medical_history.join(', ')}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Tabs */}
             <div className="flex gap-1 px-5 py-3 border-b overflow-x-auto flex-shrink-0">
               {[
                 { id: 'demographics', label: 'Demographics', icon: Users },
                 { id: 'timeline', label: 'Timeline', icon: Activity },
                 { id: 'dental_chart', label: 'Dental Chart', icon: Stethoscope },
+                { id: 'documents', label: 'Documents', icon: FolderOpen },
                 { id: 'appointments', label: 'Appointments', icon: Calendar },
                 { id: 'treatments', label: 'Treatments', icon: ClipboardList },
                 { id: 'prescriptions', label: 'Prescriptions (Rx)', icon: FileText },
@@ -3479,19 +3539,94 @@ export default function Patients() {
                   </div>
 
                   {/* FAMILY SHARED PHONE NUMBER / FAMILY GROUP SUPPORT SECTION */}
-                  {selected.phone && patients.filter(p => p.phone && p.phone.trim() === selected.phone?.trim() && p.id !== selected.id).length > 0 && (
+                  {(selected.phone && patients.filter(p => p.phone && p.phone.trim() === selected.phone?.trim() && p.id !== selected.id).length > 0) || selected.family_group_id ? (
                     <div className="bg-gradient-to-br from-indigo-50/50 to-blue-50/30 p-4 rounded-2xl border border-blue-100/55 shadow-xs">
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <Users className="text-blue-650 flex-shrink-0" size={18} />
-                        <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Family Group (<span className="text-blue-700 font-bold">{patients.filter(p => p.phone && p.phone.trim() === selected.phone?.trim() && p.id !== selected.id).length + 1} Shared Contacts</span>)</h4>
+                      <div className="flex items-center justify-between mb-2.5">
+                        <div className="flex items-center gap-2">
+                          <Users className="text-blue-650 flex-shrink-0" size={18} />
+                          <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                            Family Group
+                            <span className="text-blue-700 font-bold ml-1">
+                              ({selected.family_group_id ? 'Linked' : `${patients.filter(p => p.phone && p.phone.trim() === selected.phone?.trim()).length} Members`})
+                            </span>
+                          </h4>
+                        </div>
+                        {canWriteClinical() && !selected.family_group_id && (
+                          <button
+                            onClick={async () => {
+                              const familyName = prompt('Enter family name (e.g., "The Sharma Family"):', `${selected.name}'s Family`);
+                              if (!familyName) return;
+                              try {
+                                // Create family group
+                                const { data: family, error: familyError } = await supabase
+                                  .from('family_groups')
+                                  .insert({
+                                    family_name: familyName,
+                                    primary_contact_phone: selected.phone,
+                                    primary_contact_email: selected.email
+                                  })
+                                  .select()
+                                  .single();
+
+                                if (familyError) throw familyError;
+
+                                // Update current patient
+                                await supabase
+                                  .from('patients')
+                                  .update({ family_group_id: family.id })
+                                  .eq('id', selected.id);
+
+                                // Update all patients with same phone
+                                const siblingIds = patients
+                                  .filter(p => p.phone?.trim() === selected.phone?.trim() && p.id !== selected.id)
+                                  .map(p => p.id);
+
+                                if (siblingIds.length > 0) {
+                                  await supabase
+                                    .from('patients')
+                                    .update({ family_group_id: family.id })
+                                    .in('id', siblingIds);
+                                }
+
+                                setSelected({ ...selected, family_group_id: family.id });
+                                fetchPatients();
+                                notify('success', 'Family Created', `Family group "${familyName}" created with ${siblingIds.length + 1} members.`);
+                              } catch (err: any) {
+                                console.error('Family creation error:', err);
+                                notify('error', 'Failed', err.message || 'Could not create family group');
+                              }
+                            }}
+                            className="text-[10px] px-2 py-1 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition"
+                          >
+                            Create Formal Family Group
+                          </button>
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
-                        The following patient files share the same phone contact number (<strong className="font-semibold text-slate-700">{selected.phone}</strong>). Clinical histories, treatments, and billing remain safely separate.
+                        {selected.family_group_id
+                          ? 'This patient belongs to a formal family group. All members share linked records.'
+                          : `The following patient files share the same phone contact number (${selected.phone}). Clinical histories remain separate.`}
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {patients.filter(p => p.phone && p.phone.trim() === selected.phone?.trim() && p.id !== selected.id).map(member => (
-                          <div 
-                            key={member.id} 
+                        {/* Current patient */}
+                        <div className="p-3 bg-blue-100/50 border border-blue-200 rounded-xl flex items-center justify-between">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center flex-shrink-0">
+                              {selected.name?.[0]?.toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-800 truncate">{selected.name} <span className="text-blue-600">(Current)</span></p>
+                              <p className="text-[10px] text-slate-500 font-mono">{selected.patient_code}</p>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Other family members */}
+                        {patients.filter(p =>
+                          (selected.family_group_id && p.family_group_id === selected.family_group_id && p.id !== selected.id) ||
+                          (!selected.family_group_id && p.phone && p.phone.trim() === selected.phone?.trim() && p.id !== selected.id)
+                        ).map(member => (
+                          <div
+                            key={member.id}
                             onClick={() => openPatientProfile(member)}
                             className="p-3 bg-white hover:bg-blue-55/70 border border-slate-100 hover:border-blue-200 rounded-xl transition cursor-pointer flex items-center justify-between"
                           >
@@ -3505,13 +3640,13 @@ export default function Patients() {
                               </div>
                             </div>
                             <button className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5">
-                              View Profile <ArrowRight size={10} />
+                              View <ArrowRight size={10} />
                             </button>
                           </div>
                         ))}
                       </div>
                     </div>
-                  )}
+                  ) : null}
 
                   {/* Status Badges Row and Edit Profile Trigger */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
@@ -3560,7 +3695,9 @@ export default function Patients() {
                             insurance_policy_num: meta.insurance_policy_num || '',
                             insurance_expiry: meta.insurance_expiry || '',
                             avatar: meta.avatar || 'avatar1',
-                            dob: meta.dob || ''
+                            dob: meta.dob || '',
+                            internal_notes: meta.internal_notes || '',
+                            recall_history: meta.recall_history || []
                           });
                           setIsEditingProfile(true);
                         }}
@@ -3809,6 +3946,24 @@ export default function Patients() {
                             rows={2}
                           />
                         </div>
+
+                        {/* Internal Staff Notes - Admin/Staff only */}
+                        {(admin || canWriteClinical()) && (
+                          <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-amber-700 block mb-1 flex items-center gap-1">
+                              <AlertCircle size={10} />
+                              Internal Staff Notes (Private)
+                            </label>
+                            <p className="text-[9px] text-amber-600 mb-1.5">Only visible to staff, not shared with patients</p>
+                            <textarea
+                              value={profileForm.internal_notes}
+                              onChange={(e) => setProfileForm({ ...profileForm, internal_notes: e.target.value })}
+                              placeholder="e.g. VIP patient, prefers morning appointments, anxious patient..."
+                              className="w-full px-3 py-2 bg-white rounded-lg border border-amber-200 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                              rows={2}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
@@ -4330,6 +4485,50 @@ export default function Patients() {
                           {getPatientMetadata(selected).notes || selected.notes || 'No case remarks added yet. Click edit profile to append.'}
                         </p>
                       </div>
+
+                      {/* Internal Staff Notes - Admin/Clinical only */}
+                      {(admin || canWriteClinical()) && (() => {
+                        const internalNotes = getPatientMetadata(selected).internal_notes;
+                        if (!internalNotes) return null;
+                        return (
+                          <div className="bg-amber-50 rounded-xl p-3 border border-amber-200">
+                            <p className="text-xs font-bold text-amber-700 mb-1 flex items-center gap-1">
+                              <AlertCircle size={12} />
+                              Internal Staff Notes (Private)
+                            </p>
+                            <p className="text-xs text-amber-800 leading-relaxed">{internalNotes}</p>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Recall History Section */}
+                      {(() => {
+                        const recallHistory = getPatientMetadata(selected).recall_history || [];
+                        if (recallHistory.length === 0) return null;
+                        return (
+                          <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
+                            <p className="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1">
+                              <Bell size={12} />
+                              Recall Communication History ({recallHistory.length})
+                            </p>
+                            <div className="space-y-2">
+                              {recallHistory.slice(0, 5).map((recall: any, idx: number) => (
+                                <div key={idx} className="text-xs bg-white p-2 rounded-lg border border-blue-100">
+                                  <div className="flex justify-between items-start">
+                                    <span className="font-semibold text-blue-700">{recall.type || 'Recall'}</span>
+                                    <span className="text-[10px] text-slate-400">{new Date(recall.date).toLocaleDateString('en-IN')}</span>
+                                  </div>
+                                  {recall.notes && <p className="text-slate-600 mt-0.5">{recall.notes}</p>}
+                                  {recall.sent_by && <p className="text-[10px] text-slate-400 mt-0.5">By: {recall.sent_by}</p>}
+                                </div>
+                              ))}
+                              {recallHistory.length > 5 && (
+                                <p className="text-[10px] text-slate-500 text-center">+{recallHistory.length - 5} more recalls</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -4448,7 +4647,7 @@ export default function Patients() {
                       setTreatmentForm(t => ({
                         ...t,
                         treatment_type: status === 'Crown' ? 'Crowns & Bridges' :
-                                        status === 'Caries' ? 'Fillings' : 
+                                        status === 'Caries' ? 'Fillings' :
                                         status === 'Root Canal' ? 'Root Canal' :
                                         status === 'Missing' ? 'Dental Implants' :
                                         'Consultation',
@@ -4461,6 +4660,293 @@ export default function Patients() {
                   />
                 </div>
               )}
+
+              {/* DOCUMENTS GALLERY - X-RAYS, CLINICAL PHOTOS, BEFORE/AFTER */}
+              {activeTab === 'documents' && (() => {
+                const patientImages = getPatientMetadata(selected).images || [];
+                const [docFilter, setDocFilter] = React.useState<string>('all');
+                const [lightboxImage, setLightboxImage] = React.useState<any>(null);
+                const [showDocUpload, setShowDocUpload] = React.useState(false);
+                const [newDocForm, setNewDocForm] = React.useState({
+                  name: '',
+                  category: 'X-Ray / OPG',
+                  notes: '',
+                  tempUrl: ''
+                });
+                const [docUploadError, setDocUploadError] = React.useState('');
+
+                const DOC_CATEGORIES = [
+                  { id: 'all', label: 'All Documents', icon: FolderOpen },
+                  { id: 'X-Ray / OPG', label: 'X-Rays / OPG', icon: Activity },
+                  { id: 'Intraoral Photo', label: 'Intraoral Photos', icon: Camera },
+                  { id: 'Pre-operative Dental View', label: 'Before Treatment', icon: Eye },
+                  { id: 'Post-operative Restoration', label: 'After Treatment', icon: CheckCircle2 },
+                  { id: 'Diagnostic CT Scan', label: 'CT Scans', icon: Activity },
+                  { id: 'Lab Prescription', label: 'Lab Prescriptions', icon: FileText },
+                  { id: 'Consent Form', label: 'Consent Forms', icon: FileText },
+                ];
+
+                const filteredImages = docFilter === 'all'
+                  ? patientImages
+                  : patientImages.filter((img: any) => img.category === docFilter);
+
+                const handleDocFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 5 * 1024 * 1024) {
+                    setDocUploadError('File size exceeds 5MB limit.');
+                    return;
+                  }
+                  setDocUploadError('');
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    setNewDocForm(prev => ({
+                      ...prev,
+                      tempUrl: reader.result as string,
+                      name: prev.name || file.name.split('.')[0]
+                    }));
+                  };
+                  reader.readAsDataURL(file);
+                };
+
+                const submitDocUpload = async () => {
+                  if (!newDocForm.tempUrl || !newDocForm.name) {
+                    setDocUploadError('Please provide a name and select a file.');
+                    return;
+                  }
+                  const newImage = {
+                    id: `img-${Date.now()}`,
+                    url: newDocForm.tempUrl,
+                    name: newDocForm.name,
+                    category: newDocForm.category,
+                    notes: newDocForm.notes,
+                    date: new Date().toISOString()
+                  };
+                  await updatePatientMetadata({
+                    images: [...patientImages, newImage]
+                  });
+                  notify('success', 'Document Uploaded', `${newDocForm.category} attached to patient records.`);
+                  setNewDocForm({ name: '', category: 'X-Ray / OPG', notes: '', tempUrl: '' });
+                  setShowDocUpload(false);
+                };
+
+                const deleteDocImage = async (imageId: string) => {
+                  if (!confirm('Remove this document from patient records?')) return;
+                  const filtered = patientImages.filter((img: any) => img.id !== imageId);
+                  await updatePatientMetadata({ images: filtered });
+                  notify('success', 'Document Removed', 'Attachment deleted from patient records.');
+                  setLightboxImage(null);
+                };
+
+                return (
+                  <div className="space-y-4">
+                    {/* Header with upload button */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold text-sm text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                          <FolderOpen size={16} className="text-teal-600" />
+                          Clinical Documents & Radiographs
+                        </h4>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {patientImages.length} document{patientImages.length !== 1 ? 's' : ''} attached
+                        </p>
+                      </div>
+                      {canWriteClinical() && (
+                        <button
+                          onClick={() => setShowDocUpload(!showDocUpload)}
+                          className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold shadow-sm transition"
+                        >
+                          <Camera size={14} />
+                          Upload Document
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Upload Panel */}
+                    {showDocUpload && (
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                          <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Upload New Document</h5>
+                          <button onClick={() => setShowDocUpload(false)} className="p-1 hover:bg-slate-200 rounded text-slate-500">
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 block mb-1">Document Name *</label>
+                            <input
+                              type="text"
+                              value={newDocForm.name}
+                              onChange={e => setNewDocForm(p => ({ ...p, name: e.target.value }))}
+                              placeholder="e.g. OPG Full Mouth X-Ray"
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-500 block mb-1">Category</label>
+                            <select
+                              value={newDocForm.category}
+                              onChange={e => setNewDocForm(p => ({ ...p, category: e.target.value }))}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
+                            >
+                              <option value="X-Ray / OPG">X-Ray / OPG</option>
+                              <option value="Intraoral Photo">Intraoral Photo</option>
+                              <option value="Pre-operative Dental View">Pre-operative (Before)</option>
+                              <option value="Post-operative Restoration">Post-operative (After)</option>
+                              <option value="Diagnostic CT Scan">CT Scan</option>
+                              <option value="Lab Prescription">Lab Prescription</option>
+                              <option value="Consent Form">Consent Form</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block mb-1">Clinical Notes</label>
+                          <input
+                            type="text"
+                            value={newDocForm.notes}
+                            onChange={e => setNewDocForm(p => ({ ...p, notes: e.target.value }))}
+                            placeholder="e.g. Root tip visible on tooth 36"
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
+                          />
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed border-slate-300 hover:border-teal-400 hover:bg-teal-50/30 p-4 rounded-xl cursor-pointer transition">
+                            <ImageIcon size={16} className="text-slate-400" />
+                            <span className="text-xs font-semibold text-slate-600">Select Image File</span>
+                            <input type="file" accept="image/*" onChange={handleDocFileChange} className="hidden" />
+                          </label>
+                          {newDocForm.tempUrl && (
+                            <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
+                              <img src={newDocForm.tempUrl} alt="Preview" className="w-full h-full object-cover" />
+                            </div>
+                          )}
+                        </div>
+                        {docUploadError && <p className="text-xs text-red-600 font-semibold">{docUploadError}</p>}
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button onClick={() => setShowDocUpload(false)} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600">Cancel</button>
+                          <button onClick={submitDocUpload} className="px-4 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-bold">Upload</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Category Filter Pills */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {DOC_CATEGORIES.map(cat => {
+                        const count = cat.id === 'all'
+                          ? patientImages.length
+                          : patientImages.filter((img: any) => img.category === cat.id).length;
+                        const isActive = docFilter === cat.id;
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => setDocFilter(cat.id)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-semibold border transition ${
+                              isActive
+                                ? 'bg-teal-100 text-teal-700 border-teal-200'
+                                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            <cat.icon size={12} />
+                            {cat.label}
+                            <span className={`text-[10px] px-1.5 rounded-full ${isActive ? 'bg-teal-200 text-teal-800' : 'bg-slate-100 text-slate-500'}`}>
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Documents Grid */}
+                    {filteredImages.length === 0 ? (
+                      <div className="text-center py-12 bg-slate-50/50 border border-dashed border-slate-200 rounded-xl">
+                        <ImageIcon size={32} className="mx-auto text-slate-300 mb-3" />
+                        <p className="text-sm font-semibold text-slate-400 mb-1">No documents found</p>
+                        <p className="text-xs text-slate-400">
+                          {docFilter === 'all'
+                            ? 'Upload X-Rays, clinical photos, and treatment documents here.'
+                            : `No ${DOC_CATEGORIES.find(c => c.id === docFilter)?.label || 'documents'} uploaded yet.`}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        {filteredImages.map((img: any) => (
+                          <div
+                            key={img.id}
+                            onClick={() => setLightboxImage(img)}
+                            className="group relative bg-white rounded-xl border border-slate-100 overflow-hidden cursor-pointer hover:shadow-md hover:border-teal-200 transition"
+                          >
+                            <div className="aspect-square bg-slate-100 relative">
+                              <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition flex items-center justify-center">
+                                <Maximize2 size={20} className="text-white opacity-0 group-hover:opacity-100 transition" />
+                              </div>
+                              <span className="absolute top-2 left-2 text-[9px] px-2 py-0.5 rounded bg-black/60 text-white font-bold uppercase">
+                                {img.category?.split(' ')[0] || 'Doc'}
+                              </span>
+                            </div>
+                            <div className="p-2.5">
+                              <p className="text-xs font-bold text-slate-800 truncate">{img.name}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                {new Date(img.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Lightbox Modal */}
+                    {lightboxImage && (
+                      <div
+                        className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+                        onClick={() => setLightboxImage(null)}
+                      >
+                        <div
+                          className="bg-slate-900 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className="px-5 py-3 border-b border-slate-700 flex items-center justify-between bg-slate-900">
+                            <div>
+                              <h4 className="font-bold text-white text-sm">{lightboxImage.name}</h4>
+                              <p className="text-xs text-slate-400">{lightboxImage.category} • {new Date(lightboxImage.date).toLocaleDateString('en-IN')}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {canWriteClinical() && (
+                                <button
+                                  onClick={() => deleteDocImage(lightboxImage.id)}
+                                  className="p-2 hover:bg-red-500/20 rounded-lg text-red-400 transition"
+                                  title="Delete document"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setLightboxImage(null)}
+                                className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 transition"
+                              >
+                                <X size={18} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex-1 bg-black flex items-center justify-center p-6 overflow-auto">
+                            <img
+                              src={lightboxImage.url}
+                              alt={lightboxImage.name}
+                              className="max-h-[65vh] max-w-full object-contain rounded-lg"
+                            />
+                          </div>
+                          {lightboxImage.notes && (
+                            <div className="px-5 py-3 bg-slate-800 border-t border-slate-700">
+                              <p className="text-xs text-slate-300 font-semibold">Clinical Notes:</p>
+                              <p className="text-xs text-slate-400 mt-1">{lightboxImage.notes}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* RX PRESCRIPTIONS SEGMENT */}
               {activeTab === 'prescriptions' && (
