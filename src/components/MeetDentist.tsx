@@ -5,10 +5,10 @@ export default function MeetDentist() {
   const { darkMode } = useDarkMode();
 
   const credentials = [
-    { icon: GraduationCap, label: 'MDS (Oral & Maxillofacial Surgery)' },
+    { icon: GraduationCap, label: 'BDS (Cosmetic Dental Surgeon)' },
     { icon: Award, label: '10+ Years Experience' },
     { icon: Star, label: '1000+ Successful Cases' },
-    { icon: Clock, label: 'Available 6 Days/Week' },
+    { icon: Clock, label: 'Available 7 Days/Week' },
   ];
 
   return (
@@ -22,7 +22,7 @@ export default function MeetDentist() {
               <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl shadow-teal-500/20">
                 <img
                   src={`${import.meta.env.BASE_URL}doctor.jpg`}
-                  alt="Dr. Jupalli Durga Bhavani - MDS Oral & Maxillofacial Surgery"
+                  alt="Dr. Jupalli Durga Bhavani - Cheif Dental Doctor"
                   className="w-full h-80 sm:h-96 lg:h-[600px] object-cover object-top"
                   referrerPolicy="no-referrer"
                 />
@@ -51,7 +51,7 @@ export default function MeetDentist() {
             <h2 className={`text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold mb-4 sm:mb-6 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
               Dr. Jupalli Durga Bhavani
               <span className="block text-xl sm:text-2xl lg:text-3xl mt-1 sm:mt-2 text-teal-600">
-                MDS Oral & Maxillofacial Surgery
+                Cheif Dental Doctor
               </span>
             </h2>
 
